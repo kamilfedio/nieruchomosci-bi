@@ -1,6 +1,5 @@
 """Config for application"""
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,13 +15,7 @@ class BaseConfig(BaseSettings):
     )
 
 
-class KaggleConfig(BaseConfig):
-    """Kaggle config for downloading data"""
-
-    api_token: str = Field(alias="KAGGLE_API_TOKEN")
-
-
 class Config(BaseConfig):
     """Config"""
 
-    kaggle: KaggleConfig = Field(default_factory=KaggleConfig)  # type: ignore
+    ...
