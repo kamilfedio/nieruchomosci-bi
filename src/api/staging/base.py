@@ -29,6 +29,12 @@ class BaseStaging(ABC):
     def read(self) -> pl.LazyFrame: ...
 
     @staticmethod
+    def _camel_to_snake(name: str) -> str:
+        name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+        name = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name)
+        return name.lower()
+
+    @staticmethod
     def _to_snake_case(name: str) -> str:
         return re.sub(r"\s+", "_", name.strip()).lower()
 
