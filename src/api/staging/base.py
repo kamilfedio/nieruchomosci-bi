@@ -22,15 +22,11 @@ class BaseStaging(ABC):
     @abstractmethod
     def source_name(self) -> str: ...
 
-    @property
-    @abstractmethod
-    def natural_key(self) -> list[str]: ...
-
     @abstractmethod
     def stage(self, df: pl.LazyFrame) -> pl.LazyFrame: ...
 
-    def read(self) -> pl.LazyFrame:
-        return pl.scan_parquet(self._source_path)
+    @abstractmethod
+    def read(self) -> pl.LazyFrame: ...
 
     @staticmethod
     def _to_snake_case(name: str) -> str:
@@ -48,7 +44,7 @@ class BaseStaging(ABC):
         )
 
     def _dedup(self, df: pl.LazyFrame) -> pl.LazyFrame:
-        return df.unique(subset=self.natural_key, keep="first", maintain_order=False)
+        return df.unique(keep="first", maintain_order=False)
 
     def save(self, df: pl.DataFrame) -> Path:
         path = (
