@@ -25,31 +25,22 @@ def _normalize_expr(expr: pl.Expr) -> pl.Expr:
 
 class GovMetadataTransformer(BaseTransformer):
     _DEFAULT_COLUMNS: list[str] = [
-        "Title",
-        "Category",
-        "License",
-        "Update frequency",
-        "Dataset created",
-        "Dataset verified",
-        "Dataset views count",
-        "Dataset downloads count",
-        "Dataset regions",
-        "Dataset URL",
-        "Organization URL",
-        "Download URL",
-        "Resource URL",
-        "Resource title",
-        "File format",
-        "File size",
-        "Openness score",
-        "Data date",
-        "Institution type",
-        "Name",
-        "Abbreviation",
-        "City",
-        "Postal code",
-        "Street",
-        "Street number",
+        "dataset_url",
+        "title",
+        "category",
+        "institution_type",
+        "name",
+        "id_institution",
+        "regon",
+        "resource_created",
+        "data_date",
+        "file_format",
+        "download_url",
+        "batch_id",
+        "loaded_at",
+        "source_file",
+        "dataset_created",
+        "dataset_regions",
     ]
 
     def __init__(
@@ -67,19 +58,14 @@ class GovMetadataTransformer(BaseTransformer):
         return "gov_metadata"
 
     def read(self) -> pl.LazyFrame:
-        return pl.scan_csv(
-            self._source_path,
-            separator=";",
-            infer_schema_length=1000,
-            low_memory=True,
-        )
+        return pl.scan_parquet(self._source_path)
 
     def transform(self, df: pl.LazyFrame) -> pl.LazyFrame:
         city_pattern = "|".join(re.escape(_normalize_str(c)) for c in self._cities)
         return (
-            df.filter(pl.col("Institution type") == "Developers")
+            df.filter(pl.col("institution_type") == "Developers")
             .with_columns(
-                _normalize_expr(pl.col("Dataset regions")).alias("_regions_norm")
+                _normalize_expr(pl.col("dataset_regions")).alias("_regions_norm")
             )
             .filter(pl.col("_regions_norm").str.contains(city_pattern))
             .drop("_regions_norm")
@@ -88,7 +74,7 @@ class GovMetadataTransformer(BaseTransformer):
 
 
 if __name__ == "__main__":
-    file = Path("data/raw/gov_metadata/20260530_231513.csv")
+    file = Path("data/staging/gov_metadata/20260530_231513.parquet")
     transformer = GovMetadataTransformer(
         source_path=file,
         cities=["Warsaw", "Kraków"],
