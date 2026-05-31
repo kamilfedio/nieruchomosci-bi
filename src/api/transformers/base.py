@@ -39,7 +39,7 @@ class BaseTransformer(ABC):
         logger.info("Starting transformation of '{}'", self._source_path)
         lf = self.read()
         lf = self.transform(lf)
-        df = lf.collect()
+        df = lf.collect(engine="streaming")
         logger.info("Transformation complete: {} rows", len(df))
         path = self.save(df)
         logger.info("Saved to '{}'", path)
