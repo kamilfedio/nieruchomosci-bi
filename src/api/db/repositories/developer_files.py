@@ -48,15 +48,16 @@ class DeveloperFileRepository(BaseRepository[DeveloperFile]):
         result = self._session.execute(stmt)
         return result.rowcount
 
-    def get_pending_by_cities(self, cities: list[str]) -> list[DeveloperFile]:
-        return (
-            self._session.query(DeveloperFile)
-            .filter(
-                DeveloperFile.institution_city.in_(cities),
-                DeveloperFile.status == "pending",
-            )
-            .all()
+    def get_pending_by_cities(
+        self, cities: list[str], limit: int | None = None
+    ) -> list[DeveloperFile]:
+        q = self._session.query(DeveloperFile).filter(
+            DeveloperFile.institution_city.in_(cities),
+            DeveloperFile.status == "pending",
         )
+        if limit is not None:
+            q = q.limit(limit)
+        return q.all()
 
     def get_by_cities(self, cities: list[str]) -> list[DeveloperFile]:
         return (

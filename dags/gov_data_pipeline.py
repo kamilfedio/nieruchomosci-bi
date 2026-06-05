@@ -30,7 +30,7 @@ def gov_data_pipeline():
 
         with get_session(engine) as session:
             pending = DeveloperFileRepository(session).get_pending_by_cities(
-                config.cities
+                config.cities, limit=config.scrape_limit
             )
 
         results: list[dict[str, str]] = []
