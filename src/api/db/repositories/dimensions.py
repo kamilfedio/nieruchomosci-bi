@@ -1,18 +1,18 @@
-"""Repositories for dimensional model: Dim_Czas, Dim_Lokalizacja,
-Dim_Status_Lokalu, Dim_Inwestycja (SCD2), Fact_Zmiana."""
+"""Repositories for dimensional model:
+DimTime, DimLocation, DimUnitStatus, DimInvestment (SCD2), FactChange."""
 
 import datetime
 
 from sqlalchemy.dialects.sqlite import insert
 
-from ..models import DimCzas, DimInwestycja, DimLokalizacja, DimStatusLokalu, FactZmiana
+from ..models import DimInvestment, DimLocation, DimTime, DimUnitStatus, FactChange
 from .base import BaseRepository
 
 
-class DimCzasRepository(BaseRepository[DimCzas]):
-    def insert_or_ignore(self, record: DimCzas) -> None:
+class DimTimeRepository(BaseRepository[DimTime]):
+    def insert_or_ignore(self, record: DimTime) -> None:
         self._session.execute(
-            insert(DimCzas)
+            insert(DimTime)
             .values(
                 id=record.id,
                 date=record.date,
@@ -25,11 +25,11 @@ class DimCzasRepository(BaseRepository[DimCzas]):
             .on_conflict_do_nothing(index_elements=["id"])
         )
 
-    def insert_or_ignore_batch(self, records: list[DimCzas]) -> int:
+    def insert_or_ignore_batch(self, records: list[DimTime]) -> int:
         if not records:
             return 0
         result = self._session.execute(
-            insert(DimCzas)
+            insert(DimTime)
             .values(
                 [
                     dict(
@@ -52,7 +52,7 @@ class DimCzasRepository(BaseRepository[DimCzas]):
         """Return id (YYYYMMDD) for given date, inserting if missing."""
         date_id = int(date.strftime("%Y%m%d"))
         self.insert_or_ignore(
-            DimCzas(
+            DimTime(
                 id=date_id,
                 date=date,
                 year=date.year,
@@ -65,58 +65,58 @@ class DimCzasRepository(BaseRepository[DimCzas]):
         return date_id
 
 
-class DimLokalizacjaRepository(BaseRepository[DimLokalizacja]):
-    def insert_or_ignore(self, record: DimLokalizacja) -> None:
+class DimLocationRepository(BaseRepository[DimLocation]):
+    def insert_or_ignore(self, record: DimLocation) -> None:
         self._session.execute(
-            insert(DimLokalizacja)
-            .values(miasto_norm=record.miasto_norm)
-            .on_conflict_do_nothing(index_elements=["miasto_norm"])
+            insert(DimLocation)
+            .values(city_norm=record.city_norm)
+            .on_conflict_do_nothing(index_elements=["city_norm"])
         )
 
-    def insert_or_ignore_batch(self, records: list[DimLokalizacja]) -> int:
+    def insert_or_ignore_batch(self, records: list[DimLocation]) -> int:
         if not records:
             return 0
         result = self._session.execute(
-            insert(DimLokalizacja)
-            .values([{"miasto_norm": r.miasto_norm} for r in records])
-            .on_conflict_do_nothing(index_elements=["miasto_norm"])
+            insert(DimLocation)
+            .values([{"city_norm": r.city_norm} for r in records])
+            .on_conflict_do_nothing(index_elements=["city_norm"])
         )
         return result.rowcount
 
-    def get_id(self, miasto_norm: str) -> int | None:
+    def get_id(self, city_norm: str) -> int | None:
         row = (
-            self._session.query(DimLokalizacja)
-            .filter(DimLokalizacja.miasto_norm == miasto_norm)
+            self._session.query(DimLocation)
+            .filter(DimLocation.city_norm == city_norm)
             .first()
         )
         return row.id if row else None
 
-    def get_or_create_id(self, miasto_norm: str) -> int:
-        self.insert_or_ignore(DimLokalizacja(miasto_norm=miasto_norm))
-        return self.get_id(miasto_norm)  # type: ignore[return-value]
+    def get_or_create_id(self, city_norm: str) -> int:
+        self.insert_or_ignore(DimLocation(city_norm=city_norm))
+        return self.get_id(city_norm)  # type: ignore[return-value]
 
 
-class DimStatusLokaluRepository(BaseRepository[DimStatusLokalu]):
+class DimUnitStatusRepository(BaseRepository[DimUnitStatus]):
     _LABELS: dict[str, str] = {
-        "AVAILABLE": "Dostępny",
-        "RESERVED": "Zarezerwowany",
-        "SOLD": "Sprzedany",
-        "WITHDRAWN": "Wycofany",
-        "UNKNOWN": "Nieznany",
+        "AVAILABLE": "Available",
+        "RESERVED": "Reserved",
+        "SOLD": "Sold",
+        "WITHDRAWN": "Withdrawn",
+        "UNKNOWN": "Unknown",
     }
 
-    def insert_or_ignore(self, record: DimStatusLokalu) -> None:
+    def insert_or_ignore(self, record: DimUnitStatus) -> None:
         self._session.execute(
-            insert(DimStatusLokalu)
+            insert(DimUnitStatus)
             .values(status_norm=record.status_norm, status_label=record.status_label)
             .on_conflict_do_nothing(index_elements=["status_norm"])
         )
 
-    def insert_or_ignore_batch(self, records: list[DimStatusLokalu]) -> int:
+    def insert_or_ignore_batch(self, records: list[DimUnitStatus]) -> int:
         if not records:
             return 0
         result = self._session.execute(
-            insert(DimStatusLokalu)
+            insert(DimUnitStatus)
             .values(
                 [
                     {"status_norm": r.status_norm, "status_label": r.status_label}
@@ -129,8 +129,8 @@ class DimStatusLokaluRepository(BaseRepository[DimStatusLokalu]):
 
     def get_id(self, status_norm: str) -> int | None:
         row = (
-            self._session.query(DimStatusLokalu)
-            .filter(DimStatusLokalu.status_norm == status_norm)
+            self._session.query(DimUnitStatus)
+            .filter(DimUnitStatus.status_norm == status_norm)
             .first()
         )
         return row.id if row else None
@@ -138,31 +138,31 @@ class DimStatusLokaluRepository(BaseRepository[DimStatusLokalu]):
     def get_or_create_id(self, status_norm: str) -> int:
         label = self._LABELS.get(status_norm, status_norm)
         self.insert_or_ignore(
-            DimStatusLokalu(status_norm=status_norm, status_label=label)
+            DimUnitStatus(status_norm=status_norm, status_label=label)
         )
         return self.get_id(status_norm)  # type: ignore[return-value]
 
 
-class DimInwestycjaRepository(BaseRepository[DimInwestycja]):
+class DimInvestmentRepository(BaseRepository[DimInvestment]):
     """SCD Type 2: tracks history of investment attribute changes."""
 
-    def insert_or_ignore(self, record: DimInwestycja) -> None:
+    def insert_or_ignore(self, record: DimInvestment) -> None:
         self._session.add(record)
 
-    def insert_or_ignore_batch(self, records: list[DimInwestycja]) -> int:
+    def insert_or_ignore_batch(self, records: list[DimInvestment]) -> int:
         self._session.add_all(records)
         return len(records)
 
     def _current(
         self, developer_name: str | None, investment_id: str | None, regon: str | None
-    ) -> DimInwestycja | None:
+    ) -> DimInvestment | None:
         return (
-            self._session.query(DimInwestycja)
+            self._session.query(DimInvestment)
             .filter(
-                DimInwestycja.developer_name == developer_name,
-                DimInwestycja.investment_id == investment_id,
-                DimInwestycja.regon == regon,
-                DimInwestycja.is_current.is_(True),
+                DimInvestment.developer_name == developer_name,
+                DimInvestment.investment_id == investment_id,
+                DimInvestment.regon == regon,
+                DimInvestment.is_current.is_(True),
             )
             .first()
         )
@@ -179,8 +179,7 @@ class DimInwestycjaRepository(BaseRepository[DimInwestycja]):
         current = self._current(developer_name, investment_id, regon)
 
         if current is None:
-            # First time we see this investment
-            new = DimInwestycja(
+            new = DimInvestment(
                 valid_from=snapshot_date,
                 developer_name=developer_name,
                 investment_id=investment_id,
@@ -192,11 +191,11 @@ class DimInwestycjaRepository(BaseRepository[DimInwestycja]):
             self._session.flush()
             return new.id
 
-        # Check if tracked attributes changed (SCD2 trigger)
+        # SCD2 trigger: city or street changed
         if current.city != city or current.street != street:
             current.valid_to = snapshot_date
             current.is_current = False
-            new = DimInwestycja(
+            new = DimInvestment(
                 valid_from=snapshot_date,
                 developer_name=developer_name,
                 investment_id=investment_id,
@@ -211,51 +210,51 @@ class DimInwestycjaRepository(BaseRepository[DimInwestycja]):
         return current.id
 
 
-class FactZmianaRepository(BaseRepository[FactZmiana]):
-    def insert_or_ignore(self, record: FactZmiana) -> None:
+class FactChangeRepository(BaseRepository[FactChange]):
+    def insert_or_ignore(self, record: FactChange) -> None:
         self._session.execute(
-            insert(FactZmiana)
+            insert(FactChange)
             .values(
-                fk_czas=record.fk_czas,
-                fk_inwestycja=record.fk_inwestycja,
-                fk_status_lokalu=record.fk_status_lokalu,
-                fk_lokalizacja=record.fk_lokalizacja,
+                fk_time=record.fk_time,
+                fk_investment=record.fk_investment,
+                fk_unit_status=record.fk_unit_status,
+                fk_location=record.fk_location,
                 unit_id=record.unit_id,
                 download_url=record.download_url,
                 is_price_changed=record.is_price_changed,
                 is_status_changed=record.is_status_changed,
-                is_obnizka=record.is_obnizka,
-                wartosc_lokalu_pln=record.wartosc_lokalu_pln,
-                prev_cena=record.prev_cena,
-                kwota_zmiany_pln=record.kwota_zmiany_pln,
-                cena_m2_pln=record.cena_m2_pln,
+                is_price_drop=record.is_price_drop,
+                unit_value_pln=record.unit_value_pln,
+                prev_price=record.prev_price,
+                change_amount_pln=record.change_amount_pln,
+                price_per_m2_pln=record.price_per_m2_pln,
             )
             .on_conflict_do_nothing(index_elements=["download_url", "unit_id"])
         )
 
-    def insert_or_ignore_batch(self, records: list[FactZmiana]) -> int:
+    def insert_or_ignore_batch(self, records: list[FactChange]) -> int:
         if not records:
             return 0
         rows = [
             dict(
-                fk_czas=r.fk_czas,
-                fk_inwestycja=r.fk_inwestycja,
-                fk_status_lokalu=r.fk_status_lokalu,
-                fk_lokalizacja=r.fk_lokalizacja,
+                fk_time=r.fk_time,
+                fk_investment=r.fk_investment,
+                fk_unit_status=r.fk_unit_status,
+                fk_location=r.fk_location,
                 unit_id=r.unit_id,
                 download_url=r.download_url,
                 is_price_changed=r.is_price_changed,
                 is_status_changed=r.is_status_changed,
-                is_obnizka=r.is_obnizka,
-                wartosc_lokalu_pln=r.wartosc_lokalu_pln,
-                prev_cena=r.prev_cena,
-                kwota_zmiany_pln=r.kwota_zmiany_pln,
-                cena_m2_pln=r.cena_m2_pln,
+                is_price_drop=r.is_price_drop,
+                unit_value_pln=r.unit_value_pln,
+                prev_price=r.prev_price,
+                change_amount_pln=r.change_amount_pln,
+                price_per_m2_pln=r.price_per_m2_pln,
             )
             for r in records
         ]
         result = self._session.execute(
-            insert(FactZmiana)
+            insert(FactChange)
             .values(rows)
             .on_conflict_do_nothing(index_elements=["download_url", "unit_id"])
         )

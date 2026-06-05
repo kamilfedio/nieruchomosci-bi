@@ -1,8 +1,7 @@
 """Gov data loader — steps 6-7: FK lookup + load into dimensional model.
 
 Reads the processed (transformer output) parquet and writes to:
-  Dim_Czas, Dim_Lokalizacja, Dim_Status_Lokalu, Dim_Inwestycja (SCD2),
-  Fact_Zmiana.
+  Dim_Time, Dim_Location, Dim_Unit_Status, Dim_Investment (SCD2), Fact_Change.
 """
 
 import datetime
@@ -12,13 +11,13 @@ import polars as pl
 from loguru import logger
 from src.api.config import Config
 from src.api.db.connection import build_engine, get_session, init_db
-from src.api.db.models import FactZmiana
+from src.api.db.models import FactChange
 from src.api.db.repositories.dimensions import (
-    DimCzasRepository,
-    DimInwestycjaRepository,
-    DimLokalizacjaRepository,
-    DimStatusLokaluRepository,
-    FactZmianaRepository,
+    DimInvestmentRepository,
+    DimLocationRepository,
+    DimTimeRepository,
+    DimUnitStatusRepository,
+    FactChangeRepository,
 )
 
 from .base import BaseLoader
@@ -52,15 +51,15 @@ class GovDataLoader(BaseLoader):
 
         total = 0
         with get_session(engine) as session:
-            dim_czas = DimCzasRepository(session)
-            dim_lok = DimLokalizacjaRepository(session)
-            dim_status = DimStatusLokaluRepository(session)
-            dim_inw = DimInwestycjaRepository(session)
-            fact_repo = FactZmianaRepository(session)
+            dim_time = DimTimeRepository(session)
+            dim_loc = DimLocationRepository(session)
+            dim_status = DimUnitStatusRepository(session)
+            dim_inv = DimInvestmentRepository(session)
+            fact_repo = FactChangeRepository(session)
 
             for batch_start in range(0, len(df), _BATCH_SIZE):
                 batch = df[batch_start : batch_start + _BATCH_SIZE]
-                facts: list[FactZmiana] = []
+                facts: list[FactChange] = []
 
                 for row in batch.iter_rows(named=True):
                     # ── step 6: FK lookups ────────────────────────────────
@@ -68,15 +67,15 @@ class GovDataLoader(BaseLoader):
                     if snapshot_date is None:
                         continue
 
-                    fk_czas = dim_czas.get_or_create(snapshot_date)
+                    fk_time = dim_time.get_or_create(snapshot_date)
 
-                    miasto = row.get("miasto_norm") or row.get("city") or "UNKNOWN"
-                    fk_lok = dim_lok.get_or_create_id(miasto)
+                    city = row.get("city_norm") or row.get("city") or "UNKNOWN"
+                    fk_loc = dim_loc.get_or_create_id(city)
 
                     status = row.get("status_norm") or "UNKNOWN"
                     fk_status = dim_status.get_or_create_id(status)
 
-                    fk_inw = dim_inw.get_or_create_id(
+                    fk_inv = dim_inv.get_or_create_id(
                         developer_name=row.get("developer_name"),
                         investment_id=row.get("investment_id"),
                         regon=row.get("regon"),
@@ -85,22 +84,22 @@ class GovDataLoader(BaseLoader):
                         snapshot_date=snapshot_date,
                     )
 
-                    # ── step 7: build Fact_Zmiana row ─────────────────────
+                    # ── step 7: build Fact_Change row ─────────────────────
                     facts.append(
-                        FactZmiana(
-                            fk_czas=fk_czas,
-                            fk_inwestycja=fk_inw,
-                            fk_status_lokalu=fk_status,
-                            fk_lokalizacja=fk_lok,
+                        FactChange(
+                            fk_time=fk_time,
+                            fk_investment=fk_inv,
+                            fk_unit_status=fk_status,
+                            fk_location=fk_loc,
                             unit_id=row.get("unit_id") or "",
                             download_url=row.get("download_url") or "",
                             is_price_changed=bool(row.get("is_price_changed")),
                             is_status_changed=bool(row.get("is_status_changed")),
-                            is_obnizka=bool(row.get("is_obnizka")),
-                            wartosc_lokalu_pln=row.get("wartosc_lokalu_pln"),
-                            prev_cena=row.get("prev_cena"),
-                            kwota_zmiany_pln=row.get("kwota_zmiany_pln"),
-                            cena_m2_pln=row.get("cena_m2_pln"),
+                            is_price_drop=bool(row.get("is_price_drop")),
+                            unit_value_pln=row.get("unit_value_pln"),
+                            prev_price=row.get("prev_price"),
+                            change_amount_pln=row.get("change_amount_pln"),
+                            price_per_m2_pln=row.get("price_per_m2_pln"),
                         )
                     )
 

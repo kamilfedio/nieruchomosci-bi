@@ -46,8 +46,8 @@ class DeveloperFile(MappedAsDataclass, Base):
 # ── Dimensions ───────────────────────────────────────────────────────────────
 
 
-class DimCzas(MappedAsDataclass, Base):
-    __tablename__ = "Dim_Czas"
+class DimTime(MappedAsDataclass, Base):
+    __tablename__ = "Dim_Time"
 
     # id = YYYYMMDD integer — natural, compact, sortable
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -59,25 +59,25 @@ class DimCzas(MappedAsDataclass, Base):
     day_of_week: Mapped[int] = mapped_column(SmallInteger)
 
 
-class DimLokalizacja(MappedAsDataclass, Base):
-    __tablename__ = "Dim_Lokalizacja"
+class DimLocation(MappedAsDataclass, Base):
+    __tablename__ = "Dim_Location"
 
-    miasto_norm: Mapped[str] = mapped_column(String, unique=True)
+    city_norm: Mapped[str] = mapped_column(String, unique=True)
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
 
 
-class DimStatusLokalu(MappedAsDataclass, Base):
-    __tablename__ = "Dim_Status_Lokalu"
+class DimUnitStatus(MappedAsDataclass, Base):
+    __tablename__ = "Dim_Unit_Status"
 
     status_norm: Mapped[str] = mapped_column(String(20), unique=True)
     status_label: Mapped[str | None] = mapped_column(String, default=None)
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
 
 
-class DimInwestycja(MappedAsDataclass, Base):
+class DimInvestment(MappedAsDataclass, Base):
     """SCD Type 2 — keeps full history of investment attribute changes."""
 
-    __tablename__ = "Dim_Inwestycja"
+    __tablename__ = "Dim_Investment"
 
     valid_from: Mapped[datetime.date] = mapped_column(Date)
 
@@ -95,25 +95,25 @@ class DimInwestycja(MappedAsDataclass, Base):
 # ── Fact ─────────────────────────────────────────────────────────────────────
 
 
-class FactZmiana(MappedAsDataclass, Base):
+class FactChange(MappedAsDataclass, Base):
     """One row per (unit, snapshot) where price OR status changed."""
 
-    __tablename__ = "Fact_Zmiana"
+    __tablename__ = "Fact_Change"
     __table_args__ = (UniqueConstraint("download_url", "unit_id"),)
 
-    fk_czas: Mapped[int] = mapped_column(ForeignKey("Dim_Czas.id"))
-    fk_inwestycja: Mapped[int] = mapped_column(ForeignKey("Dim_Inwestycja.id"))
-    fk_status_lokalu: Mapped[int] = mapped_column(ForeignKey("Dim_Status_Lokalu.id"))
-    fk_lokalizacja: Mapped[int] = mapped_column(ForeignKey("Dim_Lokalizacja.id"))
+    fk_time: Mapped[int] = mapped_column(ForeignKey("Dim_Time.id"))
+    fk_investment: Mapped[int] = mapped_column(ForeignKey("Dim_Investment.id"))
+    fk_unit_status: Mapped[int] = mapped_column(ForeignKey("Dim_Unit_Status.id"))
+    fk_location: Mapped[int] = mapped_column(ForeignKey("Dim_Location.id"))
     unit_id: Mapped[str] = mapped_column(String)
     download_url: Mapped[str] = mapped_column(String)
 
     is_price_changed: Mapped[bool] = mapped_column(Boolean, default=False)
     is_status_changed: Mapped[bool] = mapped_column(Boolean, default=False)
-    is_obnizka: Mapped[bool] = mapped_column(Boolean, default=False)
-    wartosc_lokalu_pln: Mapped[float | None] = mapped_column(Float, default=None)
-    prev_cena: Mapped[float | None] = mapped_column(Float, default=None)
-    kwota_zmiany_pln: Mapped[float | None] = mapped_column(Float, default=None)
-    cena_m2_pln: Mapped[float | None] = mapped_column(Float, default=None)
+    is_price_drop: Mapped[bool] = mapped_column(Boolean, default=False)
+    unit_value_pln: Mapped[float | None] = mapped_column(Float, default=None)
+    prev_price: Mapped[float | None] = mapped_column(Float, default=None)
+    change_amount_pln: Mapped[float | None] = mapped_column(Float, default=None)
+    price_per_m2_pln: Mapped[float | None] = mapped_column(Float, default=None)
 
     id: Mapped[int] = mapped_column(primary_key=True, init=False)

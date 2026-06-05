@@ -1,10 +1,10 @@
 """Gov data transformer — steps 1-5 (pure Polars, no DB).
 
 Steps:
-  1. Normalize  → miasto_norm, status_norm
-  2. LAG        → prev_cena, prev_status_norm  (sorted by snapshot_date within unit)
-  3. Flags      → is_price_changed, is_status_changed, is_obnizka
-  4. Computed   → cena_m2_pln, kwota_zmiany_pln, wartosc_lokalu_pln
+  1. Normalize  → city_norm, status_norm
+  2. LAG        → prev_price, prev_status_norm  (sorted by snapshot_date within unit)
+  3. Flags      → is_price_changed, is_status_changed, is_price_drop
+  4. Computed   → price_per_m2_pln, change_amount_pln, unit_value_pln
   5. Filter     → keep only rows where is_price_changed OR is_status_changed
 """
 
@@ -32,7 +32,7 @@ _STATUS_MAP: dict[str, str] = {
     "sold": "SOLD",
     "wycofany": "WITHDRAWN",
     "withdrawn": "WITHDRAWN",
-    "mieszkanie": "AVAILABLE",  # 6-col files use 'typ' values
+    "mieszkanie": "AVAILABLE",  # 6-col files encode type, not status
     "dom": "AVAILABLE",
 }
 
@@ -54,8 +54,7 @@ class GovDataTransformer(BaseTransformer):
         return "gov_data"
 
     def read(self) -> pl.LazyFrame:
-        pattern = str(self._source_path / "*.parquet")
-        return pl.scan_parquet(pattern)
+        return pl.scan_parquet(str(self._source_path / "*.parquet"))
 
     def transform(self, df: pl.LazyFrame) -> pl.LazyFrame:
         df = self._filter_valid(df)
@@ -79,33 +78,32 @@ class GovDataTransformer(BaseTransformer):
 
     def _normalize(self, df: pl.LazyFrame) -> pl.LazyFrame:
         return df.with_columns(
-            pl.col("city").str.strip_chars().str.to_titlecase().alias("miasto_norm"),
+            pl.col("city").str.strip_chars().str.to_titlecase().alias("city_norm"),
             _build_status_norm_expr().alias("status_norm"),
         )
 
     # ── Step 2: LAG ──────────────────────────────────────────────────────────
 
     def _lag(self, df: pl.LazyFrame) -> pl.LazyFrame:
-        # sort first so shift(1).over() gives previous snapshot date within unit
         return df.sort([*_LAG_GROUP, "snapshot_date"]).with_columns(
-            pl.col("total_price_gross").shift(1).over(_LAG_GROUP).alias("prev_cena"),
+            pl.col("total_price_gross").shift(1).over(_LAG_GROUP).alias("prev_price"),
             pl.col("status_norm").shift(1).over(_LAG_GROUP).alias("prev_status_norm"),
         )
 
     # ── Step 3: Flags ────────────────────────────────────────────────────────
 
     def _flags(self, df: pl.LazyFrame) -> pl.LazyFrame:
-        has_prev = pl.col("prev_cena").is_not_null()
+        has_prev = pl.col("prev_price").is_not_null()
         return df.with_columns(
-            (has_prev & (pl.col("total_price_gross") != pl.col("prev_cena"))).alias(
+            (has_prev & (pl.col("total_price_gross") != pl.col("prev_price"))).alias(
                 "is_price_changed"
             ),
             (
                 pl.col("prev_status_norm").is_not_null()
                 & (pl.col("status_norm") != pl.col("prev_status_norm"))
             ).alias("is_status_changed"),
-            (has_prev & (pl.col("total_price_gross") < pl.col("prev_cena"))).alias(
-                "is_obnizka"
+            (has_prev & (pl.col("total_price_gross") < pl.col("prev_price"))).alias(
+                "is_price_drop"
             ),
         )
 
@@ -114,12 +112,12 @@ class GovDataTransformer(BaseTransformer):
     def _computed(self, df: pl.LazyFrame) -> pl.LazyFrame:
         return df.with_columns(
             (pl.col("total_price_gross") / pl.col("usable_area_m2")).alias(
-                "cena_m2_pln"
+                "price_per_m2_pln"
             ),
-            (pl.col("total_price_gross") - pl.col("prev_cena")).alias(
-                "kwota_zmiany_pln"
+            (pl.col("total_price_gross") - pl.col("prev_price")).alias(
+                "change_amount_pln"
             ),
-            pl.col("total_price_gross").alias("wartosc_lokalu_pln"),
+            pl.col("total_price_gross").alias("unit_value_pln"),
         )
 
     # ── Step 5: Filter ───────────────────────────────────────────────────────
