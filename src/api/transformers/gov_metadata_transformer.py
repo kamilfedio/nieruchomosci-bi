@@ -8,12 +8,14 @@ from .base import BaseTransformer
 
 
 class GovMetadataTransformer(BaseTransformer):
+    # `name` → `developer_name`, `city` → `institution_city` after rename
     _DEFAULT_COLUMNS: list[str] = [
         "dataset_url",
         "title",
         "category",
         "institution_type",
-        "name",
+        "developer_name",
+        "institution_city",
         "id_institution",
         "regon",
         "resource_created",
@@ -42,8 +44,10 @@ class GovMetadataTransformer(BaseTransformer):
         return pl.scan_parquet(self._source_path)
 
     def transform(self, df: pl.LazyFrame) -> pl.LazyFrame:
-        return df.filter(pl.col("institution_type") == "Developers").select(
-            self._columns
+        return (
+            df.filter(pl.col("institution_type") == "Developers")
+            .rename({"name": "developer_name", "city": "institution_city"})
+            .select(self._columns)
         )
 
 
