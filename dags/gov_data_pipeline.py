@@ -29,28 +29,35 @@ def gov_data_pipeline():
         init_db(engine)
 
         with get_session(engine) as session:
-            pending = DeveloperFileRepository(session).get_pending_by_cities(
+            rows = DeveloperFileRepository(session).get_pending_by_cities(
                 config.cities, limit=config.scrape_limit
             )
+            # Extract plain dicts before session closes — avoids DetachedInstanceError
+            pending = [
+                {"download_url": r.download_url, "file_format": r.file_format}
+                for r in rows
+            ]
 
         results: list[dict[str, str]] = []
         for record in pending:
-            if not record.file_format:
+            if not record["file_format"]:
                 continue
             try:
                 path = GovDataScraper(
-                    resource_url=record.download_url,
-                    file_format=record.file_format,
+                    resource_url=record["download_url"],
+                    file_format=record["file_format"],
                 ).run()
-                results.append({"path": str(path), "download_url": record.download_url})
+                results.append(
+                    {"path": str(path), "download_url": record["download_url"]}
+                )
                 with get_session(engine) as session:
                     DeveloperFileRepository(session).update_status(
-                        record.download_url, "downloaded"
+                        record["download_url"], "downloaded"
                     )
             except Exception:  # noqa: BLE001
                 with get_session(engine) as session:
                     DeveloperFileRepository(session).update_status(
-                        record.download_url, "failed"
+                        record["download_url"], "failed"
                     )
 
         return results
