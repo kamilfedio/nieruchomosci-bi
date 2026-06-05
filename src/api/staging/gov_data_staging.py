@@ -65,6 +65,8 @@ class GovDataStaging(BaseStaging):
         return "gov_data"
 
     def read(self) -> pl.LazyFrame:
+        if self._source_path.suffix.lower() in (".xlsx", ".xls"):
+            return pl.read_excel(self._source_path, infer_schema_length=1000).lazy()
         sep = _detect_separator(self._source_path)
         return pl.scan_csv(
             self._source_path,
@@ -72,6 +74,7 @@ class GovDataStaging(BaseStaging):
             encoding="utf8-lossy",
             infer_schema_length=1000,
             low_memory=True,
+            truncate_ragged_lines=True,
         )
 
     def _rename_columns(self, df: pl.LazyFrame) -> pl.LazyFrame:
