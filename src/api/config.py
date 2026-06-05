@@ -1,5 +1,7 @@
 """Config for application"""
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,6 +9,7 @@ class BaseConfig(BaseSettings):
     """Base settings class with common configuration for all services"""
 
     model_config = SettingsConfigDict(
+        env_file=".env",
         env_file_encoding="utf-8",
         env_nested_delimiter="__",
         case_sensitive=False,
@@ -16,6 +19,16 @@ class BaseConfig(BaseSettings):
 
 
 class Config(BaseConfig):
-    """Config"""
-
-    ...
+    db_path: Path = Path("data/db/nieruchomosci.db")
+    cities: list[str] = [
+        "Warszawa",
+        "Kraków",
+        "Wrocław",
+        "Gdańsk",
+        "Poznań",
+        "Łódź",
+        "Katowice",
+        "Lublin",
+        "Szczecin",
+        "Bydgoszcz",
+    ]
