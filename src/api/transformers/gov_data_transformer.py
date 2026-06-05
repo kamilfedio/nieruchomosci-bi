@@ -109,7 +109,9 @@ class GovDataTransformer(BaseTransformer):
         all_cols = lf.collect_schema().names()
         source_cols = [c for c in all_cols if c not in _TECHNICAL_COLS]
 
-        mapping = map_columns(source_cols, self._config.gemini_api_key)
+        mapping = map_columns(
+            source_cols, self._config.gemini_api_key, db_path=self._config.db_path
+        )
         rename: dict[str, str] = {
             src: tgt for tgt, src in mapping.items() if src is not None
         }

@@ -1,6 +1,14 @@
-"""LLM-based column mapper: source CSV headers → unified TARGET_SCHEMA."""
+"""LLM-based column mapper: source CSV headers → unified TARGET_SCHEMA.
 
+Results are cached in SQLite keyed by an MD5 hash of the sorted column
+names. Identical column sets (e.g. the same developer format repeated
+across daily snapshots) never call Gemini more than once.
+"""
+
+import hashlib
 import json
+import sqlite3
+from pathlib import Path
 
 from google import genai
 from google.genai import types
@@ -55,24 +63,45 @@ _RESPONSE_SCHEMA = types.Schema(
     required=TARGET_COLUMNS,
 )
 
+_DDL_CACHE = """
+CREATE TABLE IF NOT EXISTS column_mapping_cache (
+    cache_key  TEXT PRIMARY KEY,
+    mapping    TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+)
+"""
 
-def map_columns(
-    source_columns: list[str],
-    api_key: str,
-) -> dict[str, str | None]:
-    """Ask Gemini to map source CSV columns to TARGET_SCHEMA.
 
-    Returns dict[target_col → source_col | None].
-    """
+def _cache_key(columns: list[str]) -> str:
+    normalized = "|".join(sorted(columns))
+    return hashlib.md5(normalized.encode()).hexdigest()  # noqa: S324
+
+
+def _cache_get(db_path: Path, key: str) -> dict[str, str | None] | None:
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(_DDL_CACHE)
+        row = conn.execute(
+            "SELECT mapping FROM column_mapping_cache WHERE cache_key = ?", (key,)
+        ).fetchone()
+    return json.loads(row[0]) if row else None
+
+
+def _cache_set(db_path: Path, key: str, mapping: dict[str, str | None]) -> None:
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(_DDL_CACHE)
+        conn.execute(
+            "INSERT OR REPLACE INTO column_mapping_cache (cache_key, mapping)"
+            " VALUES (?, ?)",
+            (key, json.dumps(mapping)),
+        )
+
+
+def _call_gemini(source_columns: list[str], api_key: str) -> dict[str, str | None]:
     client = genai.Client(api_key=api_key)
-
     prompt = _PROMPT_TMPL.format(
         source_columns=json.dumps(source_columns, ensure_ascii=False, indent=2),
         target_columns=json.dumps(TARGET_COLUMNS, ensure_ascii=False),
     )
-
-    logger.debug("Requesting column mapping for {} source columns", len(source_columns))
-
     response = client.models.generate_content(
         model=_MODEL,
         contents=prompt,
@@ -83,7 +112,32 @@ def map_columns(
             temperature=0.0,
         ),
     )
+    return json.loads(response.text)
 
-    mapping: dict[str, str | None] = json.loads(response.text)
+
+def map_columns(
+    source_columns: list[str],
+    api_key: str,
+    db_path: Path | None = None,
+) -> dict[str, str | None]:
+    """Map source CSV columns to TARGET_SCHEMA via Gemini, with SQLite cache.
+
+    Returns dict[target_col → source_col | None].
+    Cache hit: no API call. Cache miss: calls Gemini and stores result.
+    """
+    key = _cache_key(source_columns)
+
+    if db_path is not None:
+        cached = _cache_get(db_path, key)
+        if cached is not None:
+            logger.debug("Column mapping cache hit ({})", key[:8])
+            return cached
+
+    logger.debug("Requesting column mapping for {} source columns", len(source_columns))
+    mapping = _call_gemini(source_columns, api_key)
     logger.debug("Column mapping: {}", mapping)
+
+    if db_path is not None:
+        _cache_set(db_path, key, mapping)
+
     return mapping
