@@ -115,28 +115,41 @@ def _call_gemini(source_columns: list[str], api_key: str) -> dict[str, str | Non
     return json.loads(response.text)
 
 
+# In-process cache: survives across files within the same task run,
+# avoids even the SQLite round-trip for repeated column sets.
+_PROCESS_CACHE: dict[str, dict[str, str | None]] = {}
+
+
 def map_columns(
     source_columns: list[str],
     api_key: str,
     db_path: Path | None = None,
 ) -> dict[str, str | None]:
-    """Map source CSV columns to TARGET_SCHEMA via Gemini, with SQLite cache.
+    """Map source CSV columns to TARGET_SCHEMA via Gemini.
 
-    Returns dict[target_col → source_col | None].
-    Cache hit: no API call. Cache miss: calls Gemini and stores result.
+    Cache hierarchy (fastest first):
+      1. In-process dict  — zero-cost within same transform task
+      2. SQLite table     — survives across DAG runs
+      3. Gemini API call  — stores result in both caches
     """
     key = _cache_key(source_columns)
+
+    if key in _PROCESS_CACHE:
+        logger.debug("Column mapping process-cache hit ({})", key[:8])
+        return _PROCESS_CACHE[key]
 
     if db_path is not None:
         cached = _cache_get(db_path, key)
         if cached is not None:
-            logger.debug("Column mapping cache hit ({})", key[:8])
+            logger.debug("Column mapping DB-cache hit ({})", key[:8])
+            _PROCESS_CACHE[key] = cached
             return cached
 
     logger.debug("Requesting column mapping for {} source columns", len(source_columns))
     mapping = _call_gemini(source_columns, api_key)
     logger.debug("Column mapping: {}", mapping)
 
+    _PROCESS_CACHE[key] = mapping
     if db_path is not None:
         _cache_set(db_path, key, mapping)
 
