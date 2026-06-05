@@ -1,4 +1,4 @@
-"""GOV data pipeline: scrape (from DB) → stage"""
+"""GOV data pipeline: scrape → stage → transform → load"""
 
 from datetime import datetime
 from pathlib import Path
@@ -75,7 +75,31 @@ def gov_data_pipeline():
             ).run()
         )
 
-    stage.expand(item=scrape())
+    @task
+    def transform(staged_paths: list[str]) -> str:
+        import sys
+
+        sys.path.insert(0, "/opt/airflow")
+        from src.api.transformers.gov_data_transformer import GovDataTransformer
+
+        # staged_paths contains all individual parquet paths from expand();
+        # transformer reads the whole staging directory at once for LAG
+        staging_dir = Path(staged_paths[0]).parent
+        path = GovDataTransformer(source_path=staging_dir).run()
+        return str(path)
+
+    @task
+    def load(processed_path: str) -> int:
+        import sys
+
+        sys.path.insert(0, "/opt/airflow")
+        from src.api.loaders.gov_data_loader import GovDataLoader
+
+        return GovDataLoader(source_path=Path(processed_path)).run()
+
+    staged = stage.expand(item=scrape())
+    processed = transform(staged)
+    load(processed)  # type: ignore[arg-type]
 
 
 gov_data_pipeline()
