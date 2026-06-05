@@ -164,13 +164,24 @@ class GovDataTransformer(BaseTransformer):
             logger.warning("No metadata for URL: {}", download_url)
             return lf
 
+        # Values treated as "no data" in source CSVs
+        placeholders = {"x", "-", "n/a", "nd", "brak", ""}
+
         fills: list[pl.Expr] = []
         if meta.developer_name:
             fills.append(
                 pl.col("developer_name").fill_null(pl.lit(meta.developer_name))
             )
         if meta.institution_city:
-            fills.append(pl.col("city").fill_null(pl.lit(meta.institution_city)))
+            # Replace null OR placeholder values (e.g. 'X') with institution_city
+            city_lower = pl.col("city").str.to_lowercase().str.strip_chars()
+            fills.append(
+                pl.when(pl.col("city").is_null() | city_lower.is_in(list(placeholders)))
+                .then(pl.lit(meta.institution_city))
+                .otherwise(pl.col("city"))
+                .alias("city")
+            )
+
         fills.append(pl.lit(meta.data_date).alias("snapshot_date"))
         fills.append(pl.lit(meta.regon).alias("regon"))
 
@@ -187,6 +198,7 @@ class GovDataTransformer(BaseTransformer):
     def transform(self, df: pl.LazyFrame) -> pl.LazyFrame:
         df = self._filter_valid(df)
         df = self._cast_types(df)
+        df = self._normalize_prices(df)
         df = self._normalize(df)
         df = self._lag(df)
         df = self._flags(df)
@@ -197,6 +209,7 @@ class GovDataTransformer(BaseTransformer):
         return df.filter(
             pl.col("unit_id").is_not_null()
             & pl.col("total_price_gross").is_not_null()
+            & (pl.col("total_price_gross") > 0)
             & pl.col("snapshot_date").is_not_null()
         )
 
@@ -208,6 +221,28 @@ class GovDataTransformer(BaseTransformer):
             .str.replace(",", ".")
             .cast(pl.Float64, strict=False)
             for c in numeric
+        )
+
+    def _normalize_prices(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        """Fix files where total_price_gross was published as price/m².
+
+        Heuristic: if computed price/m² < 1 000 PLN/m² the value is
+        suspiciously low for any Polish city — assume the column contains
+        price per m² and multiply by usable_area_m2 to get the total.
+        Typical range in major Polish cities: 5 000–30 000 PLN/m².
+        """
+        implied_per_m2 = pl.col("total_price_gross") / pl.col("usable_area_m2")
+        looks_like_per_m2 = (
+            implied_per_m2.is_not_null()
+            & (implied_per_m2 < 1_000)
+            & pl.col("usable_area_m2").is_not_null()
+            & (pl.col("usable_area_m2") > 0)
+        )
+        return df.with_columns(
+            pl.when(looks_like_per_m2)
+            .then(pl.col("total_price_gross") * pl.col("usable_area_m2"))
+            .otherwise(pl.col("total_price_gross"))
+            .alias("total_price_gross")
         )
 
     def _normalize(self, df: pl.LazyFrame) -> pl.LazyFrame:
