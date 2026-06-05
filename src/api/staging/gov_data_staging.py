@@ -19,6 +19,8 @@ from .schema import TARGET_COLUMNS, TARGET_SCHEMA
 class _FileMeta:
     developer_name: str | None
     institution_city: str | None
+    data_date: str | None
+    regon: str | None
 
 
 def _detect_separator(path: Path) -> str:
@@ -41,6 +43,8 @@ def _fetch_metadata(download_url: str, config: Config) -> _FileMeta | None:
         return _FileMeta(
             developer_name=row.developer_name,
             institution_city=row.institution_city,
+            data_date=row.data_date,
+            regon=row.regon,
         )
 
 
@@ -110,15 +114,18 @@ class GovDataStaging(BaseStaging):
         if meta.institution_city:
             fills.append(pl.col("city").fill_null(pl.lit(meta.institution_city)))
 
-        if fills:
-            logger.debug(
-                "Enriching from metadata: developer_name={!r}, institution_city={!r}",
-                meta.developer_name,
-                meta.institution_city,
-            )
-            lf = lf.with_columns(fills)
+        # Extra columns not mappable by Gemini — always set from metadata
+        fills.append(pl.lit(self._download_url).alias("download_url"))
+        fills.append(pl.lit(meta.data_date).alias("snapshot_date"))
+        fills.append(pl.lit(meta.regon).alias("regon"))
 
-        return lf
+        logger.debug(
+            "Enriching: developer={!r} city={!r} snapshot={}",
+            meta.developer_name,
+            meta.institution_city,
+            meta.data_date,
+        )
+        return lf.with_columns(fills)
 
     def stage(self, df: pl.LazyFrame) -> pl.LazyFrame:
         numeric_cols = ["total_price_gross", "usable_area_m2"]
