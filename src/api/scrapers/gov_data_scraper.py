@@ -35,22 +35,24 @@ class GovDataScraper(BaseScraper):
     def source_name(self) -> str:
         return "gov_data"
 
-    _MAGIC: dict[str, bytes] = {
-        "xlsx": b"PK\x03\x04",
-        "xls": b"\xd0\xcf\x11\xe0",
-        "csv": None,  # type: ignore[dict-item]
-    }
-
     def _validate(self, path: Path) -> None:
-        """Raise ValueError if the downloaded file looks like an error page."""
+        """Raise ValueError if the downloaded file is corrupt or an error page."""
+        fmt = self._file_format.lower()
         header = path.read_bytes()[:8]
-        expected = self._MAGIC.get(self._file_format.lower())
-        if expected is not None:
-            if not header.startswith(expected):
+
+        if fmt == "xlsx":
+            # zipfile.is_zipfile checks the full ZIP structure, not just magic bytes
+            import zipfile
+
+            if not zipfile.is_zipfile(path):
                 path.unlink(missing_ok=True)
-                raise ValueError(
-                    f"Invalid {self._file_format} file (got {header!r}): {path}"
-                )
+                raise ValueError(f"Invalid xlsx (corrupt ZIP): {path}")
+
+        elif fmt == "xls":
+            if not header.startswith(b"\xd0\xcf\x11\xe0"):
+                path.unlink(missing_ok=True)
+                raise ValueError(f"Invalid xls (bad OLE2 header): {path}")
+
         else:
             # CSV: reject HTML error pages
             if header.lstrip().startswith(b"<"):
