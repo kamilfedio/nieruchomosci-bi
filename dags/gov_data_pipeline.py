@@ -15,7 +15,7 @@ from airflow.sdk import dag, task
 )
 def gov_data_pipeline():
     @task
-    def scrape() -> list[str]:
+    def scrape() -> list[dict[str, str]]:
         import sys
 
         sys.path.insert(0, "/opt/airflow")
@@ -29,10 +29,11 @@ def gov_data_pipeline():
         init_db(engine)
 
         with get_session(engine) as session:
-            repo = DeveloperFileRepository(session)
-            pending = repo.get_pending_by_cities(config.cities)
+            pending = DeveloperFileRepository(session).get_pending_by_cities(
+                config.cities
+            )
 
-        raw_paths: list[str] = []
+        results: list[dict[str, str]] = []
         for record in pending:
             if not record.file_format:
                 continue
@@ -41,7 +42,7 @@ def gov_data_pipeline():
                     resource_url=record.download_url,
                     file_format=record.file_format,
                 ).run()
-                raw_paths.append(str(path))
+                results.append({"path": str(path), "download_url": record.download_url})
                 with get_session(engine) as session:
                     DeveloperFileRepository(session).update_status(
                         record.download_url, "downloaded"
@@ -52,18 +53,21 @@ def gov_data_pipeline():
                         record.download_url, "failed"
                     )
 
-        return raw_paths
+        return results
 
     @task
-    def stage(raw_paths: list[str]) -> list[str]:
+    def stage(scraped: list[dict[str, str]]) -> list[str]:
         import sys
 
         sys.path.insert(0, "/opt/airflow")
         from src.api.staging.gov_data_staging import GovDataStaging
 
         staged_paths: list[str] = []
-        for raw_path in raw_paths:
-            path = GovDataStaging(source_path=Path(raw_path)).run()
+        for item in scraped:
+            path = GovDataStaging(
+                source_path=Path(item["path"]),
+                download_url=item["download_url"],
+            ).run()
             staged_paths.append(str(path))
 
         return staged_paths

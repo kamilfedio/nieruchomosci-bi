@@ -1,14 +1,24 @@
 """GOV data staging — LLM-based column normalization to unified schema."""
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import polars as pl
 from loguru import logger
 from src.api.config import Config
+from src.api.db.connection import build_engine, get_session, init_db
+from src.api.db.models import DeveloperFile
+from src.api.db.repositories.developer_files import DeveloperFileRepository
 
 from .base import BaseStaging
 from .column_mapper import map_columns
 from .schema import TARGET_COLUMNS, TARGET_SCHEMA
+
+
+@dataclass
+class _FileMeta:
+    developer_name: str | None
+    institution_city: str | None
 
 
 def _detect_separator(path: Path) -> str:
@@ -16,10 +26,35 @@ def _detect_separator(path: Path) -> str:
     return ";" if sample.count(";") > sample.count(",") else ","
 
 
+def _fetch_metadata(download_url: str, config: Config) -> _FileMeta | None:
+    engine = build_engine(config.db_path)
+    init_db(engine)
+    with get_session(engine) as session:
+        row: DeveloperFile | None = (
+            DeveloperFileRepository(session)
+            ._session.query(DeveloperFile)
+            .filter(DeveloperFile.download_url == download_url)
+            .first()
+        )
+        if row is None:
+            return None
+        return _FileMeta(
+            developer_name=row.developer_name,
+            institution_city=row.institution_city,
+        )
+
+
 class GovDataStaging(BaseStaging):
-    def __init__(self, *args, config: Config | None = None, **kwargs) -> None:
+    def __init__(
+        self,
+        *args,
+        config: Config | None = None,
+        download_url: str | None = None,
+        **kwargs,
+    ) -> None:
         super().__init__(*args, **kwargs)
         self._config = config or Config()
+        self._download_url = download_url
 
     @property
     def source_name(self) -> str:
@@ -39,7 +74,6 @@ class GovDataStaging(BaseStaging):
         source_cols = df.collect_schema().names()
         mapping = map_columns(source_cols, self._config.gemini_api_key)
 
-        # Build rename dict: source_col → target_col (skip unmapped)
         rename: dict[str, str] = {
             src: tgt for tgt, src in mapping.items() if src is not None
         }
@@ -48,7 +82,6 @@ class GovDataStaging(BaseStaging):
 
         df = df.rename(rename)
 
-        # Add null columns for targets that had no mapping
         mapped_targets = set(rename.values())
         null_cols = [
             pl.lit(None).cast(TARGET_SCHEMA[col]).alias(col)
@@ -60,9 +93,36 @@ class GovDataStaging(BaseStaging):
 
         return df.select(TARGET_COLUMNS)
 
+    def _enrich_from_metadata(self, lf: pl.LazyFrame) -> pl.LazyFrame:
+        if not self._download_url:
+            return lf
+
+        meta = _fetch_metadata(self._download_url, self._config)
+        if meta is None:
+            logger.warning("No metadata found for URL: {}", self._download_url)
+            return lf
+
+        fills: list[pl.Expr] = []
+        if meta.developer_name:
+            fills.append(
+                pl.col("developer_name").fill_null(pl.lit(meta.developer_name))
+            )
+        if meta.institution_city:
+            fills.append(pl.col("city").fill_null(pl.lit(meta.institution_city)))
+
+        if fills:
+            logger.debug(
+                "Enriching from metadata: developer_name={!r}, institution_city={!r}",
+                meta.developer_name,
+                meta.institution_city,
+            )
+            lf = lf.with_columns(fills)
+
+        return lf
+
     def stage(self, df: pl.LazyFrame) -> pl.LazyFrame:
         numeric_cols = ["total_price_gross", "usable_area_m2"]
-        return df.with_columns(
+        df = df.with_columns(
             [
                 pl.col(c)
                 .cast(pl.String)
@@ -71,6 +131,7 @@ class GovDataStaging(BaseStaging):
                 for c in numeric_cols
             ]
         )
+        return self._enrich_from_metadata(df)
 
 
 if __name__ == "__main__":
