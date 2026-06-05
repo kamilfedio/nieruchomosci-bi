@@ -1,0 +1,64 @@
+"""Repository for developer_files table"""
+
+from sqlalchemy.dialects.sqlite import insert
+
+from ..models import DeveloperFile
+from .base import BaseRepository
+
+
+class DeveloperFileRepository(BaseRepository[DeveloperFile]):
+    def insert_or_ignore(self, record: DeveloperFile) -> None:
+        stmt = (
+            insert(DeveloperFile)
+            .values(
+                download_url=record.download_url,
+                developer_name=record.developer_name,
+                title=record.title,
+                regon=record.regon,
+                file_format=record.file_format,
+                institution_city=record.institution_city,
+                data_date=record.data_date,
+                dataset_url=record.dataset_url,
+            )
+            .on_conflict_do_nothing(index_elements=["download_url"])
+        )
+        self._session.execute(stmt)
+
+    def insert_or_ignore_batch(self, records: list[DeveloperFile]) -> int:
+        if not records:
+            return 0
+        rows = [
+            {
+                "download_url": r.download_url,
+                "developer_name": r.developer_name,
+                "title": r.title,
+                "regon": r.regon,
+                "file_format": r.file_format,
+                "institution_city": r.institution_city,
+                "data_date": r.data_date,
+                "dataset_url": r.dataset_url,
+            }
+            for r in records
+        ]
+        stmt = (
+            insert(DeveloperFile)
+            .values(rows)
+            .on_conflict_do_nothing(index_elements=["download_url"])
+        )
+        result = self._session.execute(stmt)
+        return result.rowcount
+
+    def get_download_urls_by_cities(self, cities: list[str]) -> list[str]:
+        rows = (
+            self._session.query(DeveloperFile.download_url)
+            .filter(DeveloperFile.institution_city.in_(cities))
+            .all()
+        )
+        return [r.download_url for r in rows]
+
+    def get_by_cities(self, cities: list[str]) -> list[DeveloperFile]:
+        return (
+            self._session.query(DeveloperFile)
+            .filter(DeveloperFile.institution_city.in_(cities))
+            .all()
+        )
