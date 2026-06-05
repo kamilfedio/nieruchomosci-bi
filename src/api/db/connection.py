@@ -4,7 +4,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import Inspector, create_engine, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -16,8 +16,30 @@ def build_engine(db_path: Path) -> Engine:
     return create_engine(f"sqlite:///{db_path}", echo=False)
 
 
+def _migrate(engine: Engine) -> None:
+    """Apply additive schema changes to an existing database."""
+    insp: Inspector = inspect(engine)
+    if "developer_files" in insp.get_table_names():
+        existing = {col["name"] for col in insp.get_columns("developer_files")}
+        with engine.begin() as conn:
+            if "status" not in existing:
+                conn.execute(
+                    text(
+                        "ALTER TABLE developer_files"
+                        " ADD COLUMN status TEXT NOT NULL DEFAULT 'pending'"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS idx_developer_files_status"
+                        " ON developer_files (status)"
+                    )
+                )
+
+
 def init_db(engine: Engine) -> None:
     Base.metadata.create_all(engine)
+    _migrate(engine)
 
 
 @contextmanager

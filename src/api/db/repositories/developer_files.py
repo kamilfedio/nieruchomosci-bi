@@ -48,13 +48,15 @@ class DeveloperFileRepository(BaseRepository[DeveloperFile]):
         result = self._session.execute(stmt)
         return result.rowcount
 
-    def get_download_urls_by_cities(self, cities: list[str]) -> list[str]:
-        rows = (
-            self._session.query(DeveloperFile.download_url)
-            .filter(DeveloperFile.institution_city.in_(cities))
+    def get_pending_by_cities(self, cities: list[str]) -> list[DeveloperFile]:
+        return (
+            self._session.query(DeveloperFile)
+            .filter(
+                DeveloperFile.institution_city.in_(cities),
+                DeveloperFile.status == "pending",
+            )
             .all()
         )
-        return [r.download_url for r in rows]
 
     def get_by_cities(self, cities: list[str]) -> list[DeveloperFile]:
         return (
@@ -62,3 +64,13 @@ class DeveloperFileRepository(BaseRepository[DeveloperFile]):
             .filter(DeveloperFile.institution_city.in_(cities))
             .all()
         )
+
+    def update_status(self, download_url: str, status: str) -> None:
+        self._session.query(DeveloperFile).filter(
+            DeveloperFile.download_url == download_url
+        ).update({"status": status})
+
+    def update_status_batch(self, download_urls: list[str], status: str) -> None:
+        self._session.query(DeveloperFile).filter(
+            DeveloperFile.download_url.in_(download_urls)
+        ).update({"status": status}, synchronize_session="fetch")
