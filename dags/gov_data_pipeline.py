@@ -32,7 +32,6 @@ def gov_data_pipeline():
             rows = DeveloperFileRepository(session).get_pending_by_cities(
                 config.cities, limit=config.scrape_limit
             )
-            # Extract plain dicts before session closes — avoids DetachedInstanceError
             pending = [
                 {"download_url": r.download_url, "file_format": r.file_format}
                 for r in rows
@@ -63,23 +62,20 @@ def gov_data_pipeline():
         return results
 
     @task
-    def stage(scraped: list[dict[str, str]]) -> list[str]:
+    def stage(item: dict[str, str]) -> str:
         import sys
 
         sys.path.insert(0, "/opt/airflow")
         from src.api.staging.gov_data_staging import GovDataStaging
 
-        staged_paths: list[str] = []
-        for item in scraped:
-            path = GovDataStaging(
+        return str(
+            GovDataStaging(
                 source_path=Path(item["path"]),
                 download_url=item["download_url"],
             ).run()
-            staged_paths.append(str(path))
+        )
 
-        return staged_paths
-
-    stage(scrape())  # type: ignore
+    stage.expand(item=scrape())
 
 
 gov_data_pipeline()
