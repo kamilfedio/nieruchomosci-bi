@@ -1,21 +1,31 @@
-"""Gov data transformer — steps 1-5 (pure Polars, no DB).
+"""Gov data transformer — all business logic for gov_data.
 
-Steps:
-  1. Normalize  → city_norm, status_norm
-  2. LAG        → prev_price, prev_status_norm  (sorted by snapshot_date within unit)
-  3. Flags      → is_price_changed, is_status_changed, is_price_drop
-  4. Computed   → price_per_m2_pln, change_amount_pln, unit_value_pln
-  5. Filter     → keep only rows where is_price_changed OR is_status_changed
+Reads raw staged parquets (original snake_case columns) and applies:
+  1. Gemini column mapping  → TARGET_SCHEMA per file
+  2. DB enrichment          → fill developer_name, city, snapshot_date, regon
+  3. Normalize              → city_norm, status_norm
+  4. Type casting           → comma-decimal → Float64
+  5. LAG                    → prev_price, prev_status_norm
+  6. Flags                  → is_price_changed, is_status_changed, is_price_drop
+  7. Computed               → price_per_m2_pln, change_amount_pln, unit_value_pln
+  8. Filter                 → keep only rows where is_price_changed OR is_status_changed
 """
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import polars as pl
 from loguru import logger
+from src.api.config import Config
+from src.api.db.connection import build_engine, get_session, init_db
+from src.api.db.models import DeveloperFile
+from src.api.staging.column_mapper import map_columns
+from src.api.staging.schema import TARGET_COLUMNS, TARGET_SCHEMA
 
 from .base import BaseTransformer
 
 _LAG_GROUP = ["developer_name", "investment_id", "unit_id"]
+_TECHNICAL_COLS = {"batch_id", "loaded_at", "source_file", "download_url"}
 
 _STATUS_MAP: dict[str, str] = {
     "dostępny": "AVAILABLE",
@@ -32,9 +42,36 @@ _STATUS_MAP: dict[str, str] = {
     "sold": "SOLD",
     "wycofany": "WITHDRAWN",
     "withdrawn": "WITHDRAWN",
-    "mieszkanie": "AVAILABLE",  # 6-col files encode type, not status
+    "mieszkanie": "AVAILABLE",
     "dom": "AVAILABLE",
 }
+
+
+@dataclass
+class _FileMeta:
+    developer_name: str | None
+    institution_city: str | None
+    data_date: str | None
+    regon: str | None
+
+
+def _fetch_metadata(download_url: str, config: Config) -> _FileMeta | None:
+    engine = build_engine(config.db_path)
+    init_db(engine)
+    with get_session(engine) as session:
+        row: DeveloperFile | None = (
+            session.query(DeveloperFile)
+            .filter(DeveloperFile.download_url == download_url)
+            .first()
+        )
+        if row is None:
+            return None
+        return _FileMeta(
+            developer_name=row.developer_name,
+            institution_city=row.institution_city,
+            data_date=row.data_date,
+            regon=row.regon,
+        )
 
 
 def _build_status_norm_expr() -> pl.Expr:
@@ -47,25 +84,105 @@ def _build_status_norm_expr() -> pl.Expr:
 
 
 class GovDataTransformer(BaseTransformer):
-    """Reads all staged gov_data parquets, produces change-only fact rows."""
+    def __init__(self, *args, config: Config | None = None, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._config = config or Config()
 
     @property
     def source_name(self) -> str:
         return "gov_data"
 
+    # ── Read: per-file Gemini mapping + enrichment, then combine ─────────────
+
     def read(self) -> pl.LazyFrame:
-        return pl.scan_parquet(str(self._source_path / "*.parquet"))
+        frames: list[pl.LazyFrame] = []
+        for parquet_file in sorted(self._source_path.glob("*.parquet")):
+            lf = pl.scan_parquet(parquet_file)
+            lf = self._apply_gemini_mapping(lf)
+            lf = self._enrich_from_db(lf)
+            frames.append(lf)
+        if not frames:
+            return pl.LazyFrame(schema=TARGET_SCHEMA)
+        return pl.concat(frames, how="diagonal_relaxed")
+
+    def _apply_gemini_mapping(self, lf: pl.LazyFrame) -> pl.LazyFrame:
+        all_cols = lf.collect_schema().names()
+        source_cols = [c for c in all_cols if c not in _TECHNICAL_COLS]
+
+        mapping = map_columns(source_cols, self._config.gemini_api_key)
+        rename: dict[str, str] = {
+            src: tgt for tgt, src in mapping.items() if src is not None
+        }
+        mapped_count = sum(v is not None for v in mapping.values())
+        logger.info("Mapped {}/{} target columns", mapped_count, len(TARGET_COLUMNS))
+
+        lf = lf.rename(rename)
+
+        existing = set(lf.collect_schema().names())
+        null_cols = [
+            pl.lit(None).cast(TARGET_SCHEMA[col]).alias(col)
+            for col in TARGET_COLUMNS
+            if col not in existing
+        ]
+        if null_cols:
+            lf = lf.with_columns(null_cols)
+
+        # Always add enrichment columns so _filter_valid can reference them
+        lf = lf.with_columns(
+            pl.lit(None, dtype=pl.String).alias("snapshot_date"),
+            pl.lit(None, dtype=pl.String).alias("regon"),
+        )
+
+        after_rename = existing | set(rename.values())
+        keep = (
+            TARGET_COLUMNS
+            + ["snapshot_date", "regon"]
+            + [c for c in _TECHNICAL_COLS if c in after_rename]
+        )
+        return lf.select(keep)
+
+    def _enrich_from_db(self, lf: pl.LazyFrame) -> pl.LazyFrame:
+        schema_names = set(lf.collect_schema().names())
+        if "download_url" not in schema_names:
+            return lf
+
+        download_url = lf.select("download_url").collect().item(0, 0)
+        if not download_url:
+            return lf
+
+        meta = _fetch_metadata(download_url, self._config)
+        if meta is None:
+            logger.warning("No metadata for URL: {}", download_url)
+            return lf
+
+        fills: list[pl.Expr] = []
+        if meta.developer_name:
+            fills.append(
+                pl.col("developer_name").fill_null(pl.lit(meta.developer_name))
+            )
+        if meta.institution_city:
+            fills.append(pl.col("city").fill_null(pl.lit(meta.institution_city)))
+        fills.append(pl.lit(meta.data_date).alias("snapshot_date"))
+        fills.append(pl.lit(meta.regon).alias("regon"))
+
+        logger.debug(
+            "Enriched: developer={!r} city={!r} snapshot={}",
+            meta.developer_name,
+            meta.institution_city,
+            meta.data_date,
+        )
+        return lf.with_columns(fills)
+
+    # ── Transform pipeline ────────────────────────────────────────────────────
 
     def transform(self, df: pl.LazyFrame) -> pl.LazyFrame:
         df = self._filter_valid(df)
-        df = self._normalize(df)  # step 1
-        df = self._lag(df)  # step 2
-        df = self._flags(df)  # step 3
-        df = self._computed(df)  # step 4
-        df = self._filter_changes(df)  # step 5
-        return df
-
-    # ── Step 0: drop garbage rows ────────────────────────────────────────────
+        df = self._cast_types(df)
+        df = self._normalize(df)
+        df = self._lag(df)
+        df = self._flags(df)
+        df = self._computed(df)
+        return self._filter_changes(df)
 
     def _filter_valid(self, df: pl.LazyFrame) -> pl.LazyFrame:
         return df.filter(
@@ -74,7 +191,15 @@ class GovDataTransformer(BaseTransformer):
             & pl.col("snapshot_date").is_not_null()
         )
 
-    # ── Step 1: Normalize ────────────────────────────────────────────────────
+    def _cast_types(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        numeric = ["total_price_gross", "usable_area_m2"]
+        return df.with_columns(
+            pl.col(c)
+            .cast(pl.String)
+            .str.replace(",", ".")
+            .cast(pl.Float64, strict=False)
+            for c in numeric
+        )
 
     def _normalize(self, df: pl.LazyFrame) -> pl.LazyFrame:
         return df.with_columns(
@@ -82,15 +207,11 @@ class GovDataTransformer(BaseTransformer):
             _build_status_norm_expr().alias("status_norm"),
         )
 
-    # ── Step 2: LAG ──────────────────────────────────────────────────────────
-
     def _lag(self, df: pl.LazyFrame) -> pl.LazyFrame:
         return df.sort([*_LAG_GROUP, "snapshot_date"]).with_columns(
             pl.col("total_price_gross").shift(1).over(_LAG_GROUP).alias("prev_price"),
             pl.col("status_norm").shift(1).over(_LAG_GROUP).alias("prev_status_norm"),
         )
-
-    # ── Step 3: Flags ────────────────────────────────────────────────────────
 
     def _flags(self, df: pl.LazyFrame) -> pl.LazyFrame:
         has_prev = pl.col("prev_price").is_not_null()
@@ -107,8 +228,6 @@ class GovDataTransformer(BaseTransformer):
             ),
         )
 
-    # ── Step 4: Computed ─────────────────────────────────────────────────────
-
     def _computed(self, df: pl.LazyFrame) -> pl.LazyFrame:
         return df.with_columns(
             (pl.col("total_price_gross") / pl.col("usable_area_m2")).alias(
@@ -119,8 +238,6 @@ class GovDataTransformer(BaseTransformer):
             ),
             pl.col("total_price_gross").alias("unit_value_pln"),
         )
-
-    # ── Step 5: Filter ───────────────────────────────────────────────────────
 
     def _filter_changes(self, df: pl.LazyFrame) -> pl.LazyFrame:
         return df.filter(pl.col("is_price_changed") | pl.col("is_status_changed"))
