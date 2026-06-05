@@ -95,20 +95,22 @@ class GovDataTransformer(BaseTransformer):
     # ── Read: per-file Gemini mapping + enrichment, then combine ─────────────
 
     def read(self) -> pl.LazyFrame:
-        frames: list[pl.LazyFrame] = []
+        # Collect each file eagerly so corrupt data (not just corrupt schema)
+        # is caught inside the try-except before frames are concatenated.
+        dfs: list[pl.DataFrame] = []
         for parquet_file in sorted(self._source_path.glob("*.parquet")):
             try:
                 lf = pl.scan_parquet(parquet_file)
                 lf = self._apply_gemini_mapping(lf)
                 lf = self._enrich_from_db(lf)
-                frames.append(lf)
+                dfs.append(lf.collect())
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "Skipping corrupt parquet {}: {}", parquet_file.name, exc
                 )
-        if not frames:
-            return pl.LazyFrame(schema=TARGET_SCHEMA)
-        return pl.concat(frames, how="diagonal_relaxed")
+        if not dfs:
+            return pl.DataFrame(schema=TARGET_SCHEMA).lazy()
+        return pl.concat(dfs, how="diagonal_relaxed").lazy()
 
     def _apply_gemini_mapping(self, lf: pl.LazyFrame) -> pl.LazyFrame:
         all_cols = lf.collect_schema().names()
