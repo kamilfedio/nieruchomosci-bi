@@ -35,6 +35,28 @@ class GovDataScraper(BaseScraper):
     def source_name(self) -> str:
         return "gov_data"
 
+    _MAGIC: dict[str, bytes] = {
+        "xlsx": b"PK\x03\x04",
+        "xls": b"\xd0\xcf\x11\xe0",
+        "csv": None,  # type: ignore[dict-item]
+    }
+
+    def _validate(self, path: Path) -> None:
+        """Raise ValueError if the downloaded file looks like an error page."""
+        header = path.read_bytes()[:8]
+        expected = self._MAGIC.get(self._file_format.lower())
+        if expected is not None:
+            if not header.startswith(expected):
+                path.unlink(missing_ok=True)
+                raise ValueError(
+                    f"Invalid {self._file_format} file (got {header!r}): {path}"
+                )
+        else:
+            # CSV: reject HTML error pages
+            if header.lstrip().startswith(b"<"):
+                path.unlink(missing_ok=True)
+                raise ValueError(f"Server returned HTML instead of CSV: {path}")
+
     def extract(self) -> Path:
         file_path: Path = (
             self._raw_dir / self.source_name / (self.batch_id + "." + self._file_format)
@@ -43,11 +65,11 @@ class GovDataScraper(BaseScraper):
 
         with self._client.stream("GET", self._resource_url) as res:
             res.raise_for_status()
-
             with open(file_path, "wb") as f:
                 for chunk in res.iter_bytes(chunk_size=8192):
                     f.write(chunk)
 
+        self._validate(file_path)
         return file_path
 
 
