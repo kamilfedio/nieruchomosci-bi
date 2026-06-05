@@ -52,12 +52,12 @@ class BaseStaging(ABC):
     def _dedup(self, df: pl.LazyFrame) -> pl.LazyFrame:
         return df.unique(keep="first", maintain_order=False)
 
-    def save(self, df: pl.DataFrame) -> Path:
+    def save(self, lf: pl.LazyFrame) -> Path:
         path = (
             self._staging_dir / self.source_name / (self._source_path.stem + ".parquet")
         )
         path.parent.mkdir(parents=True, exist_ok=True)
-        df.write_parquet(path)
+        lf.sink_parquet(path)
         return path
 
     def run(self) -> Path:
@@ -67,8 +67,6 @@ class BaseStaging(ABC):
         lf = self.stage(lf)
         lf = self._add_technical_columns(lf)
         lf = self._dedup(lf)
-        df = lf.collect(engine="streaming")
-        logger.info("Staging complete: {} rows", len(df))
-        path = self.save(df)
+        path = self.save(lf)
         logger.info("Saved to '{}'", path)
         return path
