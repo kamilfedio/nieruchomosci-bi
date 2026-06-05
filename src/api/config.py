@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from pydantic.fields import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +21,7 @@ class BaseConfig(BaseSettings):
 
 class Config(BaseConfig):
     db_path: Path = Path("data/db/nieruchomosci.db")
+    gemini_api_key: str = Field(alias="GEMINI_API_KEY")
     cities: list[str] = [
         "Warszawa",
         "Kraków",
