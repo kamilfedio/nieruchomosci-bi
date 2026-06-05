@@ -52,8 +52,8 @@ class GovDataScraper(BaseScraper):
 
 
 if __name__ == "__main__":
-    link: str = ""
-    format: str = ""
+    link: str = "https://api.dane.gov.pl/resources/952632,ceny-ofertowe-mieszkan-dewelopera-zd-wrocaw-szarskiego-spoka-z-ograniczona-odpowiedzialnoscia-inwestycja-lesnica-2025-12-21/file"
+    format: str = "csv"
 
     gov: GovDataScraper = GovDataScraper(link, format)
     gov.run()
