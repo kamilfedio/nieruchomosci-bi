@@ -97,10 +97,15 @@ class GovDataTransformer(BaseTransformer):
     def read(self) -> pl.LazyFrame:
         frames: list[pl.LazyFrame] = []
         for parquet_file in sorted(self._source_path.glob("*.parquet")):
-            lf = pl.scan_parquet(parquet_file)
-            lf = self._apply_gemini_mapping(lf)
-            lf = self._enrich_from_db(lf)
-            frames.append(lf)
+            try:
+                lf = pl.scan_parquet(parquet_file)
+                lf = self._apply_gemini_mapping(lf)
+                lf = self._enrich_from_db(lf)
+                frames.append(lf)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Skipping corrupt parquet {}: {}", parquet_file.name, exc
+                )
         if not frames:
             return pl.LazyFrame(schema=TARGET_SCHEMA)
         return pl.concat(frames, how="diagonal_relaxed")
