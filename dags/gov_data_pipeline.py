@@ -82,12 +82,13 @@ def gov_data_pipeline():
                     download_url=item["download_url"],
                 ).run()
             )
-        except Exception:
+        except Exception:  # noqa: BLE001
             with get_session(engine) as session:
                 DeveloperFileRepository(session).update_status(
                     item["download_url"], "failed"
                 )
-            raise
+            # Return sentinel so sibling expand() tasks don't cause upstream failure
+            return {"path": "", "download_url": item["download_url"], "failed": "1"}
 
         with get_session(engine) as session:
             DeveloperFileRepository(session).update_status(
@@ -109,18 +110,28 @@ def gov_data_pipeline():
         config = Config()
         engine = build_engine(config.db_path)
         init_db(engine)
-        urls = [item["download_url"] for item in staged]
+
+        # Filter out sentinel records from failed stage tasks
+        ok = [item for item in staged if not item.get("failed")]
+        if not ok:
+            raise RuntimeError("All stage tasks failed — nothing to transform")
+
+        failed_urls = [item["download_url"] for item in staged if item.get("failed")]
+        ok_urls = [item["download_url"] for item in ok]
 
         try:
-            staging_dir = Path(staged[0]["path"]).parent
+            staging_dir = Path(ok[0]["path"]).parent
             processed_path = str(GovDataTransformer(source_path=staging_dir).run())
         except Exception:
             with get_session(engine) as session:
-                DeveloperFileRepository(session).update_status_batch(urls, "failed")
+                DeveloperFileRepository(session).update_status_batch(ok_urls, "failed")
             raise
 
         with get_session(engine) as session:
-            DeveloperFileRepository(session).update_status_batch(urls, "processed")
+            repo = DeveloperFileRepository(session)
+            repo.update_status_batch(ok_urls, "processed")
+            if failed_urls:
+                repo.update_status_batch(failed_urls, "failed")
 
         return processed_path
 

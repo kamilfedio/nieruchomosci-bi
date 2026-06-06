@@ -37,13 +37,16 @@ class GovDataStaging(BaseStaging):
             # infer_schema_length=0 → all columns read as String
             return pl.read_excel(self._source_path, infer_schema_length=0).lazy()
         sep = _detect_separator(self._source_path)
-        return pl.scan_csv(
+        # Use eager read_csv instead of scan_csv: chunked lazy reading breaks on
+        # CSVs with quoted multi-line fields (embedded newlines cross chunk boundaries).
+        return pl.read_csv(
             self._source_path,
             separator=sep,
             encoding="utf8-lossy",
-            infer_schema_length=0,  # all columns as String, no type guessing
+            infer_schema_length=0,
             truncate_ragged_lines=True,
-        )
+            ignore_errors=True,
+        ).lazy()
 
     def _add_technical_columns(self, df: pl.LazyFrame) -> pl.LazyFrame:
         df = super()._add_technical_columns(df)
