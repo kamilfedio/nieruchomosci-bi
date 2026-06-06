@@ -1,21 +1,21 @@
 """Repositories for dimensional model:
 DimTime, DimLocation, DimUnitStatus, DimInvestment (SCD2), FactChange,
-DimLokalizacja, DimTypLokalu, DimTypRynku, FactOfertaNieruchomosci."""
+DimGeoLocation, DimUnitType, DimMarketType, FactListing."""
 
 import datetime
 
 from sqlalchemy.dialects.sqlite import insert
 
 from ..models import (
+    DimGeoLocation,
     DimInvestment,
     DimLocation,
-    DimLokalizacja,
+    DimMarketType,
     DimTime,
-    DimTypLokalu,
-    DimTypRynku,
     DimUnitStatus,
+    DimUnitType,
     FactChange,
-    FactOfertaNieruchomosci,
+    FactListing,
 )
 from .base import BaseRepository
 
@@ -277,40 +277,40 @@ class FactChangeRepository(BaseRepository[FactChange]):
 # ── Kaggle repositories ───────────────────────────────────────────────────────
 
 
-class DimLokalizacjaRepository(BaseRepository[DimLokalizacja]):
-    def insert_or_ignore(self, record: DimLokalizacja) -> None:
+class DimGeoLocationRepository(BaseRepository[DimGeoLocation]):
+    def insert_or_ignore(self, record: DimGeoLocation) -> None:
         self._session.add(record)
 
-    def insert_or_ignore_batch(self, records: list[DimLokalizacja]) -> int:
+    def insert_or_ignore_batch(self, records: list[DimGeoLocation]) -> int:
         self._session.add_all(records)
         return len(records)
 
     def _get(
-        self, miasto: str, lat_r: float | None, lon_r: float | None
-    ) -> DimLokalizacja | None:
+        self, city: str, lat_r: float | None, lon_r: float | None
+    ) -> DimGeoLocation | None:
         return (
-            self._session.query(DimLokalizacja)
+            self._session.query(DimGeoLocation)
             .filter(
-                DimLokalizacja.miasto == miasto,
-                DimLokalizacja.lat_r == lat_r,
-                DimLokalizacja.lon_r == lon_r,
+                DimGeoLocation.city == city,
+                DimGeoLocation.lat_r == lat_r,
+                DimGeoLocation.lon_r == lon_r,
             )
             .first()
         )
 
     def get_or_create_id(
         self,
-        miasto: str,
+        city: str,
         latitude: float | None,
         longitude: float | None,
     ) -> int:
         lat_r = round(latitude, 3) if latitude is not None else None
         lon_r = round(longitude, 3) if longitude is not None else None
-        row = self._get(miasto, lat_r, lon_r)
+        row = self._get(city, lat_r, lon_r)
         if row:
             return row.id
-        new = DimLokalizacja(
-            miasto=miasto,
+        new = DimGeoLocation(
+            city=city,
             latitude=latitude,
             longitude=longitude,
             lat_r=lat_r,
@@ -321,82 +321,82 @@ class DimLokalizacjaRepository(BaseRepository[DimLokalizacja]):
         return new.id
 
 
-class DimTypLokaluRepository(BaseRepository[DimTypLokalu]):
-    def insert_or_ignore(self, record: DimTypLokalu) -> None:
+class DimUnitTypeRepository(BaseRepository[DimUnitType]):
+    def insert_or_ignore(self, record: DimUnitType) -> None:
         self._session.add(record)
 
-    def insert_or_ignore_batch(self, records: list[DimTypLokalu]) -> int:
+    def insert_or_ignore_batch(self, records: list[DimUnitType]) -> int:
         self._session.add_all(records)
         return len(records)
 
     def get_or_create_id(self, type_hash: str, **attrs: object) -> int:
         row = (
-            self._session.query(DimTypLokalu)
-            .filter(DimTypLokalu.type_hash == type_hash)
+            self._session.query(DimUnitType)
+            .filter(DimUnitType.type_hash == type_hash)
             .first()
         )
         if row:
             return row.id
-        new = DimTypLokalu(type_hash=type_hash, **attrs)  # type: ignore[arg-type]
+        new = DimUnitType(type_hash=type_hash, **attrs)  # type: ignore[arg-type]
         self._session.add(new)
         self._session.flush()
         return new.id
 
 
-class DimTypRynkuRepository(BaseRepository[DimTypRynku]):
-    def insert_or_ignore(self, record: DimTypRynku) -> None:
+class DimMarketTypeRepository(BaseRepository[DimMarketType]):
+    def insert_or_ignore(self, record: DimMarketType) -> None:
         self._session.add(record)
 
-    def insert_or_ignore_batch(self, records: list[DimTypRynku]) -> int:
+    def insert_or_ignore_batch(self, records: list[DimMarketType]) -> int:
         self._session.add_all(records)
         return len(records)
 
     _LABELS: dict[str, str] = {
-        "pierwotny": "Rynek pierwotny",
-        "wtorny": "Rynek wtórny",
-        "nieznany": "Nieznany",
+        "primary": "Primary market",
+        "secondary": "Secondary market",
+        "unknown": "Unknown",
     }
 
-    def get_or_create_id(self, rynek_kod: str) -> int:
+    def get_or_create_id(self, market_code: str) -> int:
         row = (
-            self._session.query(DimTypRynku)
-            .filter(DimTypRynku.rynek_kod == rynek_kod)
+            self._session.query(DimMarketType)
+            .filter(DimMarketType.market_code == market_code)
             .first()
         )
         if row:
             return row.id
-        new = DimTypRynku(
-            rynek_kod=rynek_kod,
-            rynek_label=self._LABELS.get(rynek_kod, rynek_kod),
+        new = DimMarketType(
+            market_code=market_code,
+            market_label=self._LABELS.get(market_code, market_code),
         )
         self._session.add(new)
         self._session.flush()
         return new.id
 
 
-class FactOfertaNieruchomosciRepository(BaseRepository[FactOfertaNieruchomosci]):
-    def insert_or_ignore(self, record: FactOfertaNieruchomosci) -> None:
+class FactListingRepository(BaseRepository[FactListing]):
+    def insert_or_ignore(self, record: FactListing) -> None:
         self._session.add(record)
 
-    def insert_or_ignore_batch(self, records: list[FactOfertaNieruchomosci]) -> int:
+    def insert_or_ignore_batch(self, records: list[FactListing]) -> int:
         if not records:
             return 0
         rows = [
             dict(
-                fk_czas=r.fk_czas,
-                fk_lokalizacja=r.fk_lokalizacja,
-                fk_typ_lokalu=r.fk_typ_lokalu,
-                fk_typ_rynku=r.fk_typ_rynku,
+                fk_time=r.fk_time,
+                fk_geo_location=r.fk_geo_location,
+                fk_unit_type=r.fk_unit_type,
+                fk_market_type=r.fk_market_type,
                 listing_id=r.listing_id,
-                cena_calkowita_pln=r.cena_calkowita_pln,
-                powierzchnia_m2=r.powierzchnia_m2,
-                cena_m2_pln=r.cena_m2_pln,
-                liczba_ofert=r.liczba_ofert,
+                total_price_pln=r.total_price_pln,
+                area_m2=r.area_m2,
+                price_per_m2_pln=r.price_per_m2_pln,
+                listing_count=r.listing_count,
             )
             for r in records
         ]
         self._session.execute(
-            insert(FactOfertaNieruchomosci)
+            insert(FactListing)
             .values(rows)
             .on_conflict_do_nothing(index_elements=["listing_id"])
         )

@@ -4,9 +4,9 @@ import polars as pl
 
 from .base import BaseTransformer
 
-_RYNEK_MAP = {
-    "apartmentBuilding": "pierwotny",
-    "blockOfFlats": "wtorny",
+_MARKET_TYPE_MAP = {
+    "apartmentBuilding": "primary",
+    "blockOfFlats": "secondary",
 }
 
 _MATERIAL_VALID = {"brick", "concrete", "wood", "other"}
@@ -75,10 +75,12 @@ class KaggleTransformer(BaseTransformer):
     def _normalize(self, df: pl.LazyFrame) -> pl.LazyFrame:
         city_lower = pl.col("city").str.to_lowercase().str.strip_chars()
 
-        rynek_exprs = pl.lit("nieznany")
-        for src, tgt in _RYNEK_MAP.items():
-            rynek_exprs = (
-                pl.when(pl.col("type") == src).then(pl.lit(tgt)).otherwise(rynek_exprs)
+        market_type_expr = pl.lit("unknown")
+        for src, tgt in _MARKET_TYPE_MAP.items():
+            market_type_expr = (
+                pl.when(pl.col("type") == src)
+                .then(pl.lit(tgt))
+                .otherwise(market_type_expr)
             )
 
         material_lower = (
@@ -88,11 +90,11 @@ class KaggleTransformer(BaseTransformer):
             pl.when(material_lower.is_in(list(_MATERIAL_VALID)))
             .then(material_lower)
             .when(pl.col("building_material").is_null())
-            .then(pl.lit("nieznany"))
+            .then(pl.lit("unknown"))
             .otherwise(pl.lit("other"))
         )
 
-        condition_norm = pl.lit("nieznany")
+        condition_norm = pl.lit("unknown")
         for src, tgt in _CONDITION_MAP.items():
             condition_norm = (
                 pl.when(pl.col("condition").str.to_lowercase() == src)
@@ -142,10 +144,10 @@ class KaggleTransformer(BaseTransformer):
         bool_exprs = [_bool_expr(c).alias(c) for c in _BOOL_COLS]
 
         return df.with_columns(
-            city_lower.alias("miasto_norm"),
-            rynek_exprs.alias("rynek_norm"),
-            material_norm.alias("material_norm"),
-            condition_norm.alias("stan_norm"),
+            city_lower.alias("city_norm"),
+            market_type_expr.alias("market_type"),
+            material_norm.alias("building_material_norm"),
+            condition_norm.alias("condition_norm"),
             build_year.alias("build_year"),
             floor.alias("floor"),
             rooms.alias("rooms"),

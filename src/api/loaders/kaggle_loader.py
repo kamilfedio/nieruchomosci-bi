@@ -8,13 +8,13 @@ import polars as pl
 from loguru import logger
 from src.api.config import Config
 from src.api.db.connection import build_engine, get_session, init_db
-from src.api.db.models import FactOfertaNieruchomosci
+from src.api.db.models import FactListing
 from src.api.db.repositories.dimensions import (
-    DimLokalizacjaRepository,
+    DimGeoLocationRepository,
+    DimMarketTypeRepository,
     DimTimeRepository,
-    DimTypLokaluRepository,
-    DimTypRynkuRepository,
-    FactOfertaNieruchomosciRepository,
+    DimUnitTypeRepository,
+    FactListingRepository,
 )
 
 from .base import BaseLoader
@@ -22,13 +22,13 @@ from .base import BaseLoader
 _BATCH_SIZE = 500
 
 _TYPE_ATTRS = [
-    "rynek_norm",
+    "market_type",
     "rooms",
     "floor",
     "floor_count",
     "build_year",
-    "material_norm",
-    "stan_norm",
+    "building_material_norm",
+    "condition_norm",
     "has_balcony",
     "has_elevator",
     "has_parking_space",
@@ -58,46 +58,46 @@ class KaggleLoader(BaseLoader):
         total = 0
         with get_session(engine) as session:
             dim_time = DimTimeRepository(session)
-            dim_lok = DimLokalizacjaRepository(session)
-            dim_typ = DimTypLokaluRepository(session)
-            dim_rynek = DimTypRynkuRepository(session)
-            fact_repo = FactOfertaNieruchomosciRepository(session)
+            dim_geo = DimGeoLocationRepository(session)
+            dim_unit = DimUnitTypeRepository(session)
+            dim_market = DimMarketTypeRepository(session)
+            fact_repo = FactListingRepository(session)
 
             for batch_start in range(0, len(df), _BATCH_SIZE):
                 batch = df[batch_start : batch_start + _BATCH_SIZE]
-                facts: list[FactOfertaNieruchomosci] = []
+                facts: list[FactListing] = []
 
                 for row in batch.iter_rows(named=True):
                     snapshot_date: datetime.date | None = row.get("snapshot_date")
                     if snapshot_date is None:
                         continue
 
-                    fk_czas = dim_time.get_or_create(snapshot_date)
+                    fk_time = dim_time.get_or_create(snapshot_date)
 
-                    fk_lok = dim_lok.get_or_create_id(
-                        miasto=row.get("miasto_norm") or row.get("city") or "UNKNOWN",
+                    fk_geo = dim_geo.get_or_create_id(
+                        city=row.get("city_norm") or row.get("city") or "UNKNOWN",
                         latitude=row.get("latitude"),
                         longitude=row.get("longitude"),
                     )
 
                     th = _type_hash(row)
-                    fk_typ = dim_typ.get_or_create_id(
+                    fk_unit = dim_unit.get_or_create_id(
                         type_hash=th,
-                        rynek=row.get("rynek_norm"),
-                        liczba_pokoi=_to_int(row.get("rooms")),
-                        pietro=_to_int(row.get("floor")),
-                        liczba_pieter=_to_int(row.get("floor_count")),
-                        rok_budowy=_to_int(row.get("build_year")),
-                        material=row.get("material_norm"),
-                        stan=row.get("stan_norm"),
-                        balkon=row.get("has_balcony"),
-                        winda=row.get("has_elevator"),
-                        parking=row.get("has_parking_space"),
-                        komorka=row.get("has_storage_room"),
+                        market_type=row.get("market_type"),
+                        rooms=_to_int(row.get("rooms")),
+                        floor=_to_int(row.get("floor")),
+                        floor_count=_to_int(row.get("floor_count")),
+                        build_year=_to_int(row.get("build_year")),
+                        building_material=row.get("building_material_norm"),
+                        condition=row.get("condition_norm"),
+                        has_balcony=row.get("has_balcony"),
+                        has_elevator=row.get("has_elevator"),
+                        has_parking=row.get("has_parking_space"),
+                        has_storage=row.get("has_storage_room"),
                     )
 
-                    fk_rynek = dim_rynek.get_or_create_id(
-                        row.get("rynek_norm") or "nieznany"
+                    fk_market = dim_market.get_or_create_id(
+                        row.get("market_type") or "unknown"
                     )
 
                     price = row.get("price")
@@ -106,15 +106,15 @@ class KaggleLoader(BaseLoader):
                         continue
 
                     facts.append(
-                        FactOfertaNieruchomosci(
-                            fk_czas=fk_czas,
-                            fk_lokalizacja=fk_lok,
-                            fk_typ_lokalu=fk_typ,
-                            fk_typ_rynku=fk_rynek,
+                        FactListing(
+                            fk_time=fk_time,
+                            fk_geo_location=fk_geo,
+                            fk_unit_type=fk_unit,
+                            fk_market_type=fk_market,
                             listing_id=str(row.get("id") or ""),
-                            cena_calkowita_pln=float(price),
-                            powierzchnia_m2=float(area),
-                            cena_m2_pln=row.get("cena_m2_pln"),
+                            total_price_pln=float(price),
+                            area_m2=float(area),
+                            price_per_m2_pln=row.get("price_per_m2_pln"),
                         )
                     )
 

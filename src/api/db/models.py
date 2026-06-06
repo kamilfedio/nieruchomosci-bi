@@ -96,14 +96,14 @@ class DimInvestment(MappedAsDataclass, Base):
 # ── Kaggle dimensions ────────────────────────────────────────────────────────
 
 
-class DimLokalizacja(MappedAsDataclass, Base):
+class DimGeoLocation(MappedAsDataclass, Base):
     """Grain: city + rounded lat/lon (3 dp ≈ 111 m)."""
 
-    __tablename__ = "Dim_Lokalizacja"
-    __table_args__ = (UniqueConstraint("miasto", "lat_r", "lon_r"),)
+    __tablename__ = "Dim_Geo_Location"
+    __table_args__ = (UniqueConstraint("city", "lat_r", "lon_r"),)
 
-    miasto: Mapped[str] = mapped_column(String)
-    dzielnica: Mapped[str | None] = mapped_column(String, default=None)
+    city: Mapped[str] = mapped_column(String)
+    district: Mapped[str | None] = mapped_column(String, default=None)
     latitude: Mapped[float | None] = mapped_column(Float, default=None)
     longitude: Mapped[float | None] = mapped_column(Float, default=None)
     lat_r: Mapped[float | None] = mapped_column(Float, default=None)
@@ -112,34 +112,34 @@ class DimLokalizacja(MappedAsDataclass, Base):
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
 
 
-class DimTypLokalu(MappedAsDataclass, Base):
+class DimUnitType(MappedAsDataclass, Base):
     """SCD1 · unique combination of physical unit attributes."""
 
-    __tablename__ = "Dim_Typ_Lokalu"
+    __tablename__ = "Dim_Unit_Type"
 
     type_hash: Mapped[str] = mapped_column(String(32), unique=True)
-    rynek: Mapped[str | None] = mapped_column(String(20), default=None)
-    liczba_pokoi: Mapped[int | None] = mapped_column(SmallInteger, default=None)
-    pietro: Mapped[int | None] = mapped_column(SmallInteger, default=None)
-    liczba_pieter: Mapped[int | None] = mapped_column(SmallInteger, default=None)
-    rok_budowy: Mapped[int | None] = mapped_column(SmallInteger, default=None)
-    material: Mapped[str | None] = mapped_column(String(20), default=None)
-    stan: Mapped[str | None] = mapped_column(String(20), default=None)
-    balkon: Mapped[bool | None] = mapped_column(Boolean, default=None)
-    winda: Mapped[bool | None] = mapped_column(Boolean, default=None)
-    parking: Mapped[bool | None] = mapped_column(Boolean, default=None)
-    komorka: Mapped[bool | None] = mapped_column(Boolean, default=None)
+    market_type: Mapped[str | None] = mapped_column(String(20), default=None)
+    rooms: Mapped[int | None] = mapped_column(SmallInteger, default=None)
+    floor: Mapped[int | None] = mapped_column(SmallInteger, default=None)
+    floor_count: Mapped[int | None] = mapped_column(SmallInteger, default=None)
+    build_year: Mapped[int | None] = mapped_column(SmallInteger, default=None)
+    building_material: Mapped[str | None] = mapped_column(String(20), default=None)
+    condition: Mapped[str | None] = mapped_column(String(20), default=None)
+    has_balcony: Mapped[bool | None] = mapped_column(Boolean, default=None)
+    has_elevator: Mapped[bool | None] = mapped_column(Boolean, default=None)
+    has_parking: Mapped[bool | None] = mapped_column(Boolean, default=None)
+    has_storage: Mapped[bool | None] = mapped_column(Boolean, default=None)
 
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
 
 
-class DimTypRynku(MappedAsDataclass, Base):
-    """SCD1 · pierwotny / wtorny / nieznany."""
+class DimMarketType(MappedAsDataclass, Base):
+    """SCD1 · primary / secondary / unknown."""
 
-    __tablename__ = "Dim_Typ_Rynku"
+    __tablename__ = "Dim_Market_Type"
 
-    rynek_kod: Mapped[str] = mapped_column(String(20), unique=True)
-    rynek_label: Mapped[str | None] = mapped_column(String(50), default=None)
+    market_code: Mapped[str] = mapped_column(String(20), unique=True)
+    market_label: Mapped[str | None] = mapped_column(String(50), default=None)
 
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
 
@@ -172,19 +172,19 @@ class FactChange(MappedAsDataclass, Base):
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
 
 
-class FactOfertaNieruchomosci(MappedAsDataclass, Base):
+class FactListing(MappedAsDataclass, Base):
     """Grain: one Kaggle listing."""
 
-    __tablename__ = "Fact_Oferta_Nieruchomosci"
+    __tablename__ = "Fact_Listing"
 
-    fk_czas: Mapped[int] = mapped_column(ForeignKey("Dim_Time.id"))
-    fk_lokalizacja: Mapped[int] = mapped_column(ForeignKey("Dim_Lokalizacja.id"))
-    fk_typ_lokalu: Mapped[int] = mapped_column(ForeignKey("Dim_Typ_Lokalu.id"))
-    fk_typ_rynku: Mapped[int] = mapped_column(ForeignKey("Dim_Typ_Rynku.id"))
+    fk_time: Mapped[int] = mapped_column(ForeignKey("Dim_Time.id"))
+    fk_geo_location: Mapped[int] = mapped_column(ForeignKey("Dim_Geo_Location.id"))
+    fk_unit_type: Mapped[int] = mapped_column(ForeignKey("Dim_Unit_Type.id"))
+    fk_market_type: Mapped[int] = mapped_column(ForeignKey("Dim_Market_Type.id"))
     listing_id: Mapped[str] = mapped_column(String, unique=True)
-    cena_calkowita_pln: Mapped[float] = mapped_column(Float)
-    powierzchnia_m2: Mapped[float] = mapped_column(Float)
-    cena_m2_pln: Mapped[float | None] = mapped_column(Float, default=None)
-    liczba_ofert: Mapped[int] = mapped_column(SmallInteger, default=1)
+    total_price_pln: Mapped[float] = mapped_column(Float)
+    area_m2: Mapped[float] = mapped_column(Float)
+    price_per_m2_pln: Mapped[float | None] = mapped_column(Float, default=None)
+    listing_count: Mapped[int] = mapped_column(SmallInteger, default=1)
 
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
