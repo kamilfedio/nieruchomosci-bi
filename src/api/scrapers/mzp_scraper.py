@@ -31,7 +31,7 @@ def _wfs_params(bbox: tuple[float, float, float, float]) -> dict[str, str]:
         "service": "WFS",
         "version": "2.0.0",
         "request": "GetFeature",
-        "typeName": "NZ.HazardArea",
+        "typeName": "nz-core:HazardArea",
         "outputFormat": "application/json",
         "SRSNAME": "EPSG:4326",
         "BBOX": (f"{min_lat},{min_lon},{max_lat},{max_lon},urn:ogc:def:crs:EPSG::4326"),
@@ -39,7 +39,7 @@ def _wfs_params(bbox: tuple[float, float, float, float]) -> dict[str, str]:
 
 
 class MZPScraper(BaseScraper):
-    """Downloads NZ.HazardArea features per city BBOX and saves as GeoJSON."""
+    """Downloads nz-core:HazardArea features per city BBOX and saves as GeoJSON."""
 
     def __init__(self, verify_ssl: bool = True, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)

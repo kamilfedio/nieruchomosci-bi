@@ -56,20 +56,26 @@ class MZPTransformer(BaseTransformer):
             props = feat.get("properties") or {}
             geom_raw = feat.get("geometry")
 
-            # ── returnPeriod → scenario ───────────────────────────────────
-            rp = props.get("returnPeriod")
+            # ── returnPeriod (nested in likelihoodOfOccurrence) → scenario ─
             try:
+                rp = props["likelihoodOfOccurrence"]["LikelihoodOfOccurrence"][
+                    "quantitativeLikelihood"
+                ]["QuantitativeLikelihood"]["returnPeriod"]
                 scenario = _RETURN_PERIOD_MAP.get(int(rp), "unknown")
-            except (TypeError, ValueError):
+            except (KeyError, TypeError, ValueError):
                 scenario = "unknown"
 
             if scenario == "unknown":
                 skipped += 1
                 continue
 
-            # ── levelOfFlood → depth_m ────────────────────────────────────
+            # ── depth_m from magnitudeOrIntensity (often nil) ─────────────
             try:
-                depth_m = float(props.get("levelOfFlood") or "")
+                mai = props.get("magnitudeOrIntensity") or {}
+                raw_depth = (
+                    mai.get("MagnitudeOrIntensity", {}).get("value", {}).get("value")
+                )
+                depth_m = float(raw_depth) if raw_depth is not None else None
             except (TypeError, ValueError):
                 depth_m = None
 
