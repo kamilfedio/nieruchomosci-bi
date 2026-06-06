@@ -62,31 +62,67 @@ def gov_data_pipeline():
         return results
 
     @task
-    def stage(item: dict[str, str]) -> str:
+    def stage(item: dict[str, str]) -> dict[str, str]:
         import sys
 
         sys.path.insert(0, "/opt/airflow")
+        from src.api.config import Config
+        from src.api.db.connection import build_engine, get_session, init_db
+        from src.api.db.repositories.developer_files import DeveloperFileRepository
         from src.api.staging.gov_data_staging import GovDataStaging
 
-        return str(
-            GovDataStaging(
-                source_path=Path(item["path"]),
-                download_url=item["download_url"],
-            ).run()
-        )
+        config = Config()
+        engine = build_engine(config.db_path)
+        init_db(engine)
+
+        try:
+            staged_path = str(
+                GovDataStaging(
+                    source_path=Path(item["path"]),
+                    download_url=item["download_url"],
+                ).run()
+            )
+        except Exception:
+            with get_session(engine) as session:
+                DeveloperFileRepository(session).update_status(
+                    item["download_url"], "failed"
+                )
+            raise
+
+        with get_session(engine) as session:
+            DeveloperFileRepository(session).update_status(
+                item["download_url"], "staged"
+            )
+
+        return {"path": staged_path, "download_url": item["download_url"]}
 
     @task
-    def transform(staged_paths: list[str]) -> str:
+    def transform(staged: list[dict[str, str]]) -> str:
         import sys
 
         sys.path.insert(0, "/opt/airflow")
+        from src.api.config import Config
+        from src.api.db.connection import build_engine, get_session, init_db
+        from src.api.db.repositories.developer_files import DeveloperFileRepository
         from src.api.transformers.gov_data_transformer import GovDataTransformer
 
-        # staged_paths contains all individual parquet paths from expand();
-        # transformer reads the whole staging directory at once for LAG
-        staging_dir = Path(staged_paths[0]).parent
-        path = GovDataTransformer(source_path=staging_dir).run()
-        return str(path)
+        config = Config()
+        engine = build_engine(config.db_path)
+        init_db(engine)
+        urls = [item["download_url"] for item in staged]
+
+        try:
+            staging_dir = Path(staged[0]["path"]).parent
+            processed_path = str(GovDataTransformer(source_path=staging_dir).run())
+        except Exception:
+            with get_session(engine) as session:
+                DeveloperFileRepository(session).update_status_batch(urls, "failed")
+            raise
+
+        with get_session(engine) as session:
+            DeveloperFileRepository(session).update_status_batch(urls, "processed")
+
+        return processed_path
 
     @task
     def load(processed_path: str) -> int:
