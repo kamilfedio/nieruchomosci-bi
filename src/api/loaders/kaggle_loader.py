@@ -22,6 +22,21 @@ from .base import BaseLoader
 
 _BATCH_SIZE = 500
 
+# Kaggle dataset uses ASCII city names; GUS BDL uses Polish diacritics.
+# Map ASCII → canonical Polish form for fk_demographics lookup.
+_CITY_CANONICAL: dict[str, str] = {
+    "krakow":    "kraków",
+    "wroclaw":   "wrocław",
+    "lodz":      "łódź",
+    "gdansk":    "gdańsk",
+    "poznan":    "poznań",
+    "lublin":    "lublin",
+    "szczecin":  "szczecin",
+    "katowice":  "katowice",
+    "bydgoszcz": "bydgoszcz",
+    "warszawa":  "warszawa",
+}
+
 _TYPE_ATTRS = [
     "market_type",
     "rooms",
@@ -112,7 +127,8 @@ class KaggleLoader(BaseLoader):
 
                     fk_flood = row.get("fk_flood_risk")
 
-                    city_norm = row.get("city_norm") or row.get("city") or ""
+                    city_raw = row.get("city_norm") or row.get("city") or ""
+                    city_norm = _CITY_CANONICAL.get(city_raw, city_raw)
                     year = snapshot_date.year if snapshot_date else None
                     fk_demo: int | None = None
                     if city_norm and year:

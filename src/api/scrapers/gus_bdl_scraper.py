@@ -20,26 +20,29 @@ from .base import BaseScraper
 _BDL_BASE = "https://bdl.stat.gov.pl/api/v1"
 
 _INDICATORS: dict[int, str] = {
-    72305: "population",
-    64428: "avg_gross_salary",
-    60270: "unemployment_rate",
-    254524: "migration_balance",
-    72308: "working_age_population",
+    72305:  "population",
+    64428:  "avg_gross_salary",
+    60270:  "unemployment_rate",
+    149164: "migration_balance",   # saldo migracji P1355; was 254524 (non-existent)
+    72308:  "working_age_population",
 }
 
-# BDL internal unit IDs (resolved from /api/v1/units, stable)
-# Warsaw is level 5 (capital), others level 6 (county-status cities)
+# BDL internal unit IDs — all at level 5 (Powiat m. X).
+# Level-5 IDs are required for avg_gross_salary and unemployment_rate;
+# population and working_age_population work at both levels.
+# Pattern: level-6 gmina ID with last 3 digits 011 → 000 (parent powiat).
+# Warsaw: already level 5 (capital city status, no level-6 equivalent).
 _CITY_UNIT_IDS: dict[str, str] = {
     "warszawa":  "071412865000",
-    "kraków":    "011212161011",
-    "wrocław":   "030210564011",
-    "gdańsk":    "042214361011",
-    "poznań":    "023016264011",
-    "łódź":      "051011661011",
-    "katowice":  "012414869011",
-    "lublin":    "060611163011",
-    "szczecin":  "023216562011",
-    "bydgoszcz": "040410661011",
+    "kraków":    "011212161000",
+    "wrocław":   "030210564000",
+    "gdańsk":    "042214361000",
+    "poznań":    "023016264000",
+    "łódź":      "051011661000",
+    "katowice":  "012414869000",
+    "lublin":    "060611163000",
+    "szczecin":  "023216562000",
+    "bydgoszcz": "040410661000",
 }
 
 _RETRY_DELAYS = [15, 30, 60, 120]
