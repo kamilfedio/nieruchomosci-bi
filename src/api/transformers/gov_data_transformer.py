@@ -196,9 +196,9 @@ class GovDataTransformer(BaseTransformer):
     # ── Transform pipeline ────────────────────────────────────────────────────
 
     def transform(self, df: pl.LazyFrame) -> pl.LazyFrame:
-        df = self._filter_valid(df)
         df = self._cast_types(df)
         df = self._normalize_prices(df)
+        df = self._filter_valid(df)
         df = self._normalize(df)
         df = self._lag(df)
         df = self._flags(df)
