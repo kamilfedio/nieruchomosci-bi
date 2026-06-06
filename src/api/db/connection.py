@@ -35,6 +35,10 @@ def _migrate(engine: Engine) -> None:
                         " ON developer_files (status)"
                     )
                 )
+            if "raw_path" not in existing:
+                conn.execute(
+                    text("ALTER TABLE developer_files ADD COLUMN raw_path TEXT")
+                )
 
 
 def init_db(engine: Engine) -> None:

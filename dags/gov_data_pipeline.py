@@ -33,7 +33,12 @@ def gov_data_pipeline():
                 config.cities, limit=config.scrape_limit
             )
             pending = [
-                {"download_url": r.download_url, "file_format": r.file_format}
+                {
+                    "download_url": r.download_url,
+                    "file_format": r.file_format or "",
+                    "status": r.status,
+                    "raw_path": r.raw_path or "",
+                }
                 for r in rows
             ]
 
@@ -41,6 +46,20 @@ def gov_data_pipeline():
         for record in pending:
             if not record["file_format"]:
                 continue
+
+            # "downloaded" with existing raw_path — skip re-download
+            if record["status"] == "downloaded" and record["raw_path"]:
+                raw_path = Path(record["raw_path"])
+                if raw_path.exists():
+                    results.append(
+                        {
+                            "path": record["raw_path"],
+                            "download_url": record["download_url"],
+                        }
+                    )
+                    continue
+                # File disappeared — fall through to re-download
+
             try:
                 path = GovDataScraper(
                     resource_url=record["download_url"],
@@ -50,9 +69,9 @@ def gov_data_pipeline():
                     {"path": str(path), "download_url": record["download_url"]}
                 )
                 with get_session(engine) as session:
-                    DeveloperFileRepository(session).update_status(
-                        record["download_url"], "downloaded"
-                    )
+                    repo = DeveloperFileRepository(session)
+                    repo.update_status(record["download_url"], "downloaded")
+                    repo.update_raw_path(record["download_url"], str(path))
             except Exception:  # noqa: BLE001
                 with get_session(engine) as session:
                     DeveloperFileRepository(session).update_status(

@@ -37,6 +37,7 @@ class DeveloperFile(MappedAsDataclass, Base):
     data_date: Mapped[str | None] = mapped_column(String(10), default=None)
     dataset_url: Mapped[str | None] = mapped_column(Text, default=None)
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    raw_path: Mapped[str | None] = mapped_column(Text, default=None)
 
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
     first_seen_at: Mapped[str] = mapped_column(server_default=func.now(), init=False)

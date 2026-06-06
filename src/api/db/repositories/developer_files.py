@@ -51,13 +51,20 @@ class DeveloperFileRepository(BaseRepository[DeveloperFile]):
     def get_pending_by_cities(
         self, cities: list[str], limit: int | None = None
     ) -> list[DeveloperFile]:
+        """Return files ready to process: pending (need download) or downloaded
+        with a known raw_path (can skip download, go straight to staging)."""
         q = self._session.query(DeveloperFile).filter(
             DeveloperFile.institution_city.in_(cities),
-            DeveloperFile.status == "pending",
+            DeveloperFile.status.in_(["pending", "downloaded"]),
         )
         if limit is not None:
             q = q.limit(limit)
         return q.all()
+
+    def update_raw_path(self, download_url: str, raw_path: str) -> None:
+        self._session.query(DeveloperFile).filter(
+            DeveloperFile.download_url == download_url
+        ).update({"raw_path": raw_path})
 
     def get_by_cities(self, cities: list[str]) -> list[DeveloperFile]:
         return (
