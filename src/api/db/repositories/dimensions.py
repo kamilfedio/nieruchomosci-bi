@@ -1,12 +1,14 @@
 """Repositories for dimensional model:
 DimTime, DimLocation, DimUnitStatus, DimInvestment (SCD2), FactChange,
-DimGeoLocation, DimUnitType, DimMarketType, DimFloodRisk, FactListing."""
+DimGeoLocation, DimUnitType, DimMarketType, DimFloodRisk, DimDemographics,
+FactListing."""
 
 import datetime
 
 from sqlalchemy.dialects.sqlite import insert
 
 from ..models import (
+    DimDemographics,
     DimFloodRisk,
     DimGeoLocation,
     DimInvestment,
@@ -461,3 +463,75 @@ class DimFloodRiskRepository(BaseRepository[DimFloodRisk]):
             .first()
         )
         return row.id if row else None
+
+
+class DimDemographicsRepository(BaseRepository[DimDemographics]):
+    def insert_or_ignore(self, record: DimDemographics) -> None:
+        self._session.execute(
+            insert(DimDemographics)
+            .values(
+                teryt=record.teryt,
+                year=record.year,
+                city=record.city,
+                population=record.population,
+                avg_gross_salary=record.avg_gross_salary,
+                unemployment_rate=record.unemployment_rate,
+                migration_balance=record.migration_balance,
+                working_age_population=record.working_age_population,
+            )
+            .on_conflict_do_nothing(index_elements=["teryt", "year"])
+        )
+
+    def insert_or_ignore_batch(self, records: list[DimDemographics]) -> int:
+        for r in records:
+            self.insert_or_ignore(r)
+        return len(records)
+
+    def upsert_batch(self, records: list[DimDemographics]) -> int:
+        if not records:
+            return 0
+        rows = [
+            dict(
+                teryt=r.teryt,
+                year=r.year,
+                city=r.city,
+                population=r.population,
+                avg_gross_salary=r.avg_gross_salary,
+                unemployment_rate=r.unemployment_rate,
+                migration_balance=r.migration_balance,
+                working_age_population=r.working_age_population,
+            )
+            for r in records
+        ]
+        excluded = insert(DimDemographics).excluded
+        self._session.execute(
+            insert(DimDemographics)
+            .values(rows)
+            .on_conflict_do_update(
+                index_elements=["teryt", "year"],
+                set_=dict(
+                    city=excluded.city,
+                    population=excluded.population,
+                    avg_gross_salary=excluded.avg_gross_salary,
+                    unemployment_rate=excluded.unemployment_rate,
+                    migration_balance=excluded.migration_balance,
+                    working_age_population=excluded.working_age_population,
+                ),
+            )
+        )
+        return len(rows)
+
+    def get_id(self, city: str, year: int) -> int | None:
+        row = (
+            self._session.query(DimDemographics)
+            .filter(DimDemographics.city == city, DimDemographics.year == year)
+            .first()
+        )
+        return row.id if row else None
+
+    def load_city_year_map(self) -> dict[tuple[str, int], int]:
+        """Load all (city, year) → id for bulk pre-load in Kaggle loader."""
+        rows = self._session.query(
+            DimDemographics.city, DimDemographics.year, DimDemographics.id
+        ).all()
+        return {(r.city, r.year): r.id for r in rows}

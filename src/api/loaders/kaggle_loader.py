@@ -10,6 +10,7 @@ from src.api.config import Config
 from src.api.db.connection import build_engine, get_session, init_db
 from src.api.db.models import FactListing
 from src.api.db.repositories.dimensions import (
+    DimDemographicsRepository,
     DimGeoLocationRepository,
     DimMarketTypeRepository,
     DimTimeRepository,
@@ -54,6 +55,10 @@ class KaggleLoader(BaseLoader):
         if df.is_empty():
             logger.info("No listings to load")
             return 0
+
+        # Pre-load demographics map to avoid per-row DB queries
+        with get_session(engine) as session:
+            demo_map = DimDemographicsRepository(session).load_city_year_map()
 
         total = 0
         with get_session(engine) as session:
@@ -107,6 +112,14 @@ class KaggleLoader(BaseLoader):
 
                     fk_flood = row.get("fk_flood_risk")
 
+                    city_norm = row.get("city_norm") or row.get("city") or ""
+                    year = snapshot_date.year if snapshot_date else None
+                    fk_demo: int | None = None
+                    if city_norm and year:
+                        fk_demo = demo_map.get((city_norm, year)) or demo_map.get(
+                            (city_norm, year - 1)
+                        )
+
                     facts.append(
                         FactListing(
                             fk_time=fk_time,
@@ -119,6 +132,7 @@ class KaggleLoader(BaseLoader):
                             fk_flood_risk=(
                                 int(fk_flood) if fk_flood is not None else None
                             ),
+                            fk_demographics=fk_demo,
                             price_per_m2_pln=row.get("price_per_m2_pln"),
                         )
                     )

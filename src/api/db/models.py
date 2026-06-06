@@ -7,6 +7,7 @@ from sqlalchemy import (
     Date,
     Float,
     ForeignKey,
+    Integer,
     SmallInteger,
     String,
     Text,
@@ -144,6 +145,24 @@ class DimMarketType(MappedAsDataclass, Base):
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
 
 
+class DimDemographics(MappedAsDataclass, Base):
+    """Snapshot roczny wskaźników demograficznych — ziarno: city × year."""
+
+    __tablename__ = "Dim_Demographics"
+    __table_args__ = (UniqueConstraint("teryt", "year"),)
+
+    teryt: Mapped[str] = mapped_column(String(10))
+    year: Mapped[int] = mapped_column(SmallInteger)
+    city: Mapped[str] = mapped_column(String)
+    population: Mapped[int | None] = mapped_column(Integer, default=None)
+    avg_gross_salary: Mapped[float | None] = mapped_column(Float, default=None)
+    unemployment_rate: Mapped[float | None] = mapped_column(Float, default=None)
+    migration_balance: Mapped[int | None] = mapped_column(Integer, default=None)
+    working_age_population: Mapped[int | None] = mapped_column(Integer, default=None)
+
+    id: Mapped[int] = mapped_column(primary_key=True, init=False)
+
+
 class DimFloodRisk(MappedAsDataclass, Base):
     """SCD0 · 4-row flood risk dictionary (id 0–3)."""
 
@@ -215,6 +234,9 @@ class FactListing(MappedAsDataclass, Base):
     area_m2: Mapped[float] = mapped_column(Float)
     fk_flood_risk: Mapped[int | None] = mapped_column(
         ForeignKey("Dim_Flood_Risk.id"), default=None
+    )
+    fk_demographics: Mapped[int | None] = mapped_column(
+        ForeignKey("Dim_Demographics.id"), default=None
     )
     price_per_m2_pln: Mapped[float | None] = mapped_column(Float, default=None)
     listing_count: Mapped[int] = mapped_column(SmallInteger, default=1)

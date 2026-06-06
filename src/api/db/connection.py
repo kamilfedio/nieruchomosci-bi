@@ -56,6 +56,10 @@ def _migrate(engine: Engine) -> None:
                 conn.execute(
                     text("ALTER TABLE Fact_Listing ADD COLUMN fk_flood_risk INTEGER")
                 )
+            if "fk_demographics" not in existing_fl:
+                conn.execute(
+                    text("ALTER TABLE Fact_Listing ADD COLUMN fk_demographics INTEGER")
+                )
 
 
 def init_db(engine: Engine) -> None:
