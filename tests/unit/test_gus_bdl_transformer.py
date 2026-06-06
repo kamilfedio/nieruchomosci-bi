@@ -5,9 +5,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-
 from src.api.transformers.gus_bdl_transformer import GUSBDLTransformer, _clean_city
-
 
 # ── _clean_city ───────────────────────────────────────────────────────────────
 

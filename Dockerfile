@@ -10,4 +10,5 @@ RUN pip install --no-cache-dir \
     "httpx==0.28.1" \
     "fastexcel==0.20.2" \
     "kaggle==2.2.0" \
-    "shapely==2.1.0"
+    "psycopg2-binary==2.9.10" \
+    "geoalchemy2==0.17.1"

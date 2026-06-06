@@ -1,22 +1,20 @@
-"""MZP transformer — processes raw WFS GeoJSON into flood zone features.
+"""MZP transformer — processes raw WFS GeoJSON into enriched flood zone features.
 
 Steps:
   1. Map returnPeriod → scenario (Q10%/Q1%/Q0.2%)
   2. Extract depth_m from levelOfFlood
   3. Compute risk_class (high/medium/low)
-  4. Validate geometry (Shapely is_valid, not is_empty)
-  5. Simplify geometry (tolerance 0.0001°)
-  6. Ensure CRS = EPSG:4326 (WFS request used SRSNAME=EPSG:4326)
-  7. Append "no risk" sentinel row (geometry=null, scenario="none")
-  8. Save to data/processed/mzp/flood_zones.geojson
+  4. Skip unknown scenarios and null geometry
+  5. Append "no risk" sentinel row (geometry=null, scenario="none")
+  6. Save to data/processed/mzp/flood_zones.geojson
+
+Geometry validation/simplification happens in MZPLoader via PostGIS.
 """
 
 import json
 from pathlib import Path
 
 from loguru import logger
-from shapely.geometry import mapping, shape
-from shapely.validation import make_valid
 
 from .base import BaseTransformer
 
@@ -56,7 +54,6 @@ class MZPTransformer(BaseTransformer):
             props = feat.get("properties") or {}
             geom_raw = feat.get("geometry")
 
-            # ── returnPeriod (nested in likelihoodOfOccurrence) → scenario ─
             try:
                 rp = props["likelihoodOfOccurrence"]["LikelihoodOfOccurrence"][
                     "quantitativeLikelihood"
@@ -69,7 +66,10 @@ class MZPTransformer(BaseTransformer):
                 skipped += 1
                 continue
 
-            # ── depth_m from magnitudeOrIntensity (often nil) ─────────────
+            if geom_raw is None:
+                skipped += 1
+                continue
+
             try:
                 mai = props.get("magnitudeOrIntensity") or {}
                 raw_depth = (
@@ -81,27 +81,10 @@ class MZPTransformer(BaseTransformer):
 
             risk_class = _RISK_CLASS[scenario]
 
-            # ── geometry validation + simplification ──────────────────────
-            if geom_raw is None:
-                skipped += 1
-                continue
-            try:
-                geom = shape(geom_raw)
-                if geom.is_empty:
-                    skipped += 1
-                    continue
-                if not geom.is_valid:
-                    geom = make_valid(geom)
-                geom = geom.simplify(0.0001, preserve_topology=True)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Invalid geometry skipped: {}", exc)
-                skipped += 1
-                continue
-
             processed.append(
                 {
                     "type": "Feature",
-                    "geometry": mapping(geom),
+                    "geometry": geom_raw,
                     "properties": {
                         "scenario": scenario,
                         "risk_class": risk_class,
@@ -110,7 +93,6 @@ class MZPTransformer(BaseTransformer):
                 }
             )
 
-        # ── sentinel "no risk" row ────────────────────────────────────────
         processed.append(
             {
                 "type": "Feature",

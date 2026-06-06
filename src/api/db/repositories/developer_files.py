@@ -1,6 +1,6 @@
 """Repository for developer_files table"""
 
-from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.dialects.postgresql import insert
 
 from ..models import DeveloperFile
 from .base import BaseRepository

@@ -25,7 +25,7 @@ def gov_data_pipeline():
         from src.api.scrapers.gov_data_scraper import GovDataScraper
 
         config = Config()
-        engine = build_engine(config.db_path)
+        engine = build_engine(config.database_url)
         init_db(engine)
 
         with get_session(engine) as session:
@@ -91,7 +91,7 @@ def gov_data_pipeline():
         from src.api.staging.gov_data_staging import GovDataStaging
 
         config = Config()
-        engine = build_engine(config.db_path)
+        engine = build_engine(config.database_url)
         init_db(engine)
 
         try:
@@ -127,7 +127,7 @@ def gov_data_pipeline():
         from src.api.transformers.gov_data_transformer import GovDataTransformer
 
         config = Config()
-        engine = build_engine(config.db_path)
+        engine = build_engine(config.database_url)
         init_db(engine)
 
         # Filter out sentinel records from failed stage tasks

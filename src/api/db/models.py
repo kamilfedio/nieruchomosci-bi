@@ -2,9 +2,11 @@
 
 import datetime
 
+from geoalchemy2 import Geometry
 from sqlalchemy import (
     Boolean,
     Date,
+    DateTime,
     Float,
     ForeignKey,
     Integer,
@@ -14,6 +16,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, MappedAsDataclass, mapped_column
 
 
@@ -41,8 +44,22 @@ class DeveloperFile(MappedAsDataclass, Base):
     raw_path: Mapped[str | None] = mapped_column(Text, default=None)
 
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
-    first_seen_at: Mapped[str] = mapped_column(server_default=func.now(), init=False)
-    last_seen_at: Mapped[str] = mapped_column(server_default=func.now(), init=False)
+    first_seen_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), init=False
+    )
+    last_seen_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), init=False
+    )
+
+
+class ColumnMappingCache(MappedAsDataclass, Base):
+    __tablename__ = "column_mapping_cache"
+
+    cache_key: Mapped[str] = mapped_column(String(32), primary_key=True)
+    mapping: Mapped[dict] = mapped_column(JSONB)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), init=False
+    )
 
 
 # ── Dimensions ───────────────────────────────────────────────────────────────
@@ -151,7 +168,7 @@ class DimDemographics(MappedAsDataclass, Base):
     __tablename__ = "Dim_Demographics"
     __table_args__ = (UniqueConstraint("teryt", "year"),)
 
-    teryt: Mapped[str] = mapped_column(String(10))
+    teryt: Mapped[str] = mapped_column(String(12))
     year: Mapped[int] = mapped_column(SmallInteger)
     city: Mapped[str] = mapped_column(String)
     population: Mapped[int | None] = mapped_column(Integer, default=None)
@@ -172,6 +189,20 @@ class DimFloodRisk(MappedAsDataclass, Base):
     scenario: Mapped[str] = mapped_column(String(10), unique=True)
     risk_class: Mapped[str] = mapped_column(String(10))
     description: Mapped[str | None] = mapped_column(String, default=None)
+
+
+class FloodZone(Base):
+    """Flood hazard polygons from MZP WFS — full refresh on each load."""
+
+    __tablename__ = "flood_zones"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scenario: Mapped[str] = mapped_column(String(10))
+    risk_class: Mapped[str] = mapped_column(String(10))
+    depth_m: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fk_flood_risk: Mapped[int] = mapped_column(ForeignKey("Dim_Flood_Risk.id"))
+    geom = mapped_column(Geometry(geometry_type="GEOMETRY", srid=4326), nullable=False)
+    batch_id: Mapped[str] = mapped_column(String(20))
 
 
 # ── Fact ─────────────────────────────────────────────────────────────────────

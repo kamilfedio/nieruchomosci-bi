@@ -2,7 +2,6 @@
 
 import polars as pl
 import pytest
-
 from src.api.transformers.nbp_transformer import NBPTransformer
 
 

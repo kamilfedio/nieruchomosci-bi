@@ -56,7 +56,7 @@ class _FileMeta:
 
 
 def _fetch_metadata(download_url: str, config: Config) -> _FileMeta | None:
-    engine = build_engine(config.db_path)
+    engine = build_engine(config.database_url)
     init_db(engine)
     with get_session(engine) as session:
         row: DeveloperFile | None = (
@@ -117,7 +117,9 @@ class GovDataTransformer(BaseTransformer):
         source_cols = [c for c in all_cols if c not in _TECHNICAL_COLS]
 
         mapping = map_columns(
-            source_cols, self._config.gemini_api_key, db_path=self._config.db_path
+            source_cols,
+            self._config.gemini_api_key,
+            database_url=self._config.database_url,
         )
         rename: dict[str, str] = {
             src: tgt for tgt, src in mapping.items() if src is not None

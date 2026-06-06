@@ -1,18 +1,18 @@
 """LLM-based column mapper: source CSV headers → unified TARGET_SCHEMA.
 
-Results are cached in SQLite keyed by an MD5 hash of the sorted column
+Results are cached in PostgreSQL keyed by an MD5 hash of the sorted column
 names. Identical column sets (e.g. the same developer format repeated
 across daily snapshots) never call Gemini more than once.
 """
 
 import hashlib
 import json
-import sqlite3
-from pathlib import Path
 
 from google import genai
 from google.genai import types
 from loguru import logger
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
 
 from .schema import TARGET_COLUMNS
 
@@ -63,36 +63,49 @@ _RESPONSE_SCHEMA = types.Schema(
     required=TARGET_COLUMNS,
 )
 
-_DDL_CACHE = """
-CREATE TABLE IF NOT EXISTS column_mapping_cache (
-    cache_key  TEXT PRIMARY KEY,
-    mapping    TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-)
-"""
-
 
 def _cache_key(columns: list[str]) -> str:
     normalized = "|".join(sorted(columns))
     return hashlib.md5(normalized.encode()).hexdigest()  # noqa: S324
 
 
-def _cache_get(db_path: Path, key: str) -> dict[str, str | None] | None:
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(_DDL_CACHE)
-        row = conn.execute(
-            "SELECT mapping FROM column_mapping_cache WHERE cache_key = ?", (key,)
-        ).fetchone()
-    return json.loads(row[0]) if row else None
-
-
-def _cache_set(db_path: Path, key: str, mapping: dict[str, str | None]) -> None:
-    with sqlite3.connect(db_path) as conn:
-        conn.execute(_DDL_CACHE)
+def _ensure_cache_table(engine: Engine) -> None:
+    with engine.begin() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO column_mapping_cache (cache_key, mapping)"
-            " VALUES (?, ?)",
-            (key, json.dumps(mapping)),
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS column_mapping_cache (
+                    cache_key  TEXT PRIMARY KEY,
+                    mapping    JSONB NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+        )
+
+
+def _cache_get(engine: Engine, key: str) -> dict[str, str | None] | None:
+    _ensure_cache_table(engine)
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT mapping FROM column_mapping_cache WHERE cache_key = :key"),
+            {"key": key},
+        ).fetchone()
+    return dict(row[0]) if row else None
+
+
+def _cache_set(engine: Engine, key: str, mapping: dict[str, str | None]) -> None:
+    _ensure_cache_table(engine)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO column_mapping_cache (cache_key, mapping)
+                VALUES (:key, CAST(:mapping AS JSONB))
+                ON CONFLICT (cache_key) DO UPDATE SET mapping = EXCLUDED.mapping
+                """
+            ),
+            {"key": key, "mapping": json.dumps(mapping)},
         )
 
 
@@ -112,24 +125,25 @@ def _call_gemini(source_columns: list[str], api_key: str) -> dict[str, str | Non
             temperature=0.0,
         ),
     )
+    if not response.text:
+        msg = "Empty response from Gemini column mapping"
+        raise ValueError(msg)
     return json.loads(response.text)
 
 
-# In-process cache: survives across files within the same task run,
-# avoids even the SQLite round-trip for repeated column sets.
 _PROCESS_CACHE: dict[str, dict[str, str | None]] = {}
 
 
 def map_columns(
     source_columns: list[str],
     api_key: str,
-    db_path: Path | None = None,
+    database_url: str | None = None,
 ) -> dict[str, str | None]:
     """Map source CSV columns to TARGET_SCHEMA via Gemini.
 
     Cache hierarchy (fastest first):
       1. In-process dict  — zero-cost within same transform task
-      2. SQLite table     — survives across DAG runs
+      2. PostgreSQL table — survives across DAG runs
       3. Gemini API call  — stores result in both caches
     """
     key = _cache_key(source_columns)
@@ -138,8 +152,10 @@ def map_columns(
         logger.debug("Column mapping process-cache hit ({})", key[:8])
         return _PROCESS_CACHE[key]
 
-    if db_path is not None:
-        cached = _cache_get(db_path, key)
+    engine: Engine | None = None
+    if database_url is not None:
+        engine = create_engine(database_url, pool_pre_ping=True)
+        cached = _cache_get(engine, key)
         if cached is not None:
             logger.debug("Column mapping DB-cache hit ({})", key[:8])
             _PROCESS_CACHE[key] = cached
@@ -150,7 +166,7 @@ def map_columns(
     logger.debug("Column mapping: {}", mapping)
 
     _PROCESS_CACHE[key] = mapping
-    if db_path is not None:
-        _cache_set(db_path, key, mapping)
+    if engine is not None:
+        _cache_set(engine, key, mapping)
 
     return mapping

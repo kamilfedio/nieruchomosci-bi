@@ -1,10 +1,8 @@
-"""Integration tests for GovDataLoader — writes to an isolated SQLite DB."""
+"""Integration tests for GovDataLoader — writes to PostgreSQL."""
 
 from pathlib import Path
 
 import polars as pl
-import pytest
-
 from src.api.db.connection import get_session
 from src.api.db.models import DimLocation, DimTime, FactChange
 from src.api.loaders.gov_data_loader import GovDataLoader

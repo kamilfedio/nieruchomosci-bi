@@ -9,6 +9,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__CORE__FERNET_KEY: "YLPZt9TgT1b7o0ENpTxxALnXsdewukLtWOkKhiJYV2U="
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    DATABASE_URL: postgresql+psycopg2://airflow:airflow@postgres:5432/nieruchomosci
     AIRFLOW__API__SECRET_KEY: "changeme"
     AIRFLOW__API_AUTH__JWT_SECRET: "sTBY2Y_MHNG6-kZ_SF6UVCEtIo4otGFb-Xmm556C190="
     AIRFLOW__LOGGING__LOGGING_LEVEL: INFO
@@ -30,13 +31,16 @@ x-airflow-common: &airflow-common
 
 services:
   postgres:
-    image: postgres:16
+    image: postgis/postgis:16-3.4
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
       POSTGRES_DB: airflow
+    ports:
+      - "5432:5432"
     volumes:
       - postgres-db:/var/lib/postgresql/data
+      - ./config/postgres/init-nieruchomosci.sh:/docker-entrypoint-initdb.d/init-nieruchomosci.sh
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 10s

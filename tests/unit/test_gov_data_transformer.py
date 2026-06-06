@@ -2,12 +2,10 @@
 
 import polars as pl
 import pytest
-
 from src.api.transformers.gov_data_transformer import (
     GovDataTransformer,
     _build_status_norm_expr,
 )
-
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -34,7 +32,11 @@ def _base_df(**overrides) -> pl.LazyFrame:
 def _transformer(tmp_path) -> GovDataTransformer:
     from src.api.config import Config
 
-    cfg = Config(db_path=tmp_path / "test.db", gemini_api_key="", bdl_api_key="")
+    cfg = Config(
+        database_url="postgresql+psycopg2://airflow:airflow@localhost:5432/nieruchomosci_test",
+        gemini_api_key="",
+        bdl_api_key="",
+    )
     return GovDataTransformer(source_path=tmp_path, config=cfg)
 
 

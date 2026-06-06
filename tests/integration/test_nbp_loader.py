@@ -4,7 +4,6 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-
 from src.api.db.connection import get_session
 from src.api.db.models import DimTime, FactBenchmarkNbp
 from src.api.loaders.nbp_loader import NBPLoader

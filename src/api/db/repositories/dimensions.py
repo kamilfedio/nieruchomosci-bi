@@ -5,7 +5,7 @@ FactListing."""
 
 import datetime
 
-from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.dialects.postgresql import insert
 
 from ..models import (
     DimDemographics,

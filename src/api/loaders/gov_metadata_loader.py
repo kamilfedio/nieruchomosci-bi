@@ -59,7 +59,7 @@ class GovMetadataLoader(BaseLoader):
         ]
 
     def load(self) -> int:
-        engine = build_engine(self._config.db_path)
+        engine = build_engine(self._config.database_url)
         init_db(engine)
 
         df = self._read_filtered()

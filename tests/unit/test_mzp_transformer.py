@@ -3,8 +3,7 @@
 import json
 from pathlib import Path
 
-from src.api.transformers.mzp_transformer import MZPTransformer, _RETURN_PERIOD_MAP
-
+from src.api.transformers.mzp_transformer import _RETURN_PERIOD_MAP, MZPTransformer
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 

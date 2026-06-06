@@ -41,7 +41,7 @@ class GovDataLoader(BaseLoader):
         return None
 
     def load(self) -> int:
-        engine = build_engine(self._config.db_path)
+        engine = build_engine(self._config.database_url)
         init_db(engine)
 
         df = pl.read_parquet(self._source_path)

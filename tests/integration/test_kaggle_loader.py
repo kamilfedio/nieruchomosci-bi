@@ -5,7 +5,6 @@ from pathlib import Path
 
 import polars as pl
 import pytest
-
 from src.api.db.connection import get_session
 from src.api.db.models import FactListing
 from src.api.loaders.kaggle_loader import KaggleLoader

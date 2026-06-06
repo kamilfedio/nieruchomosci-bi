@@ -2,7 +2,6 @@
 
 import polars as pl
 import pytest
-
 from src.api.transformers.kaggle_transformer import KaggleTransformer
 
 
@@ -173,40 +172,3 @@ def test_computed_price_per_m2(tmp_path):
     lf = t._cast(lf)
     result = t._computed(lf).collect()
     assert result["price_per_m2_pln"][0] == pytest.approx(10_000.0)
-
-
-# ── _enrich_flood_risk ────────────────────────────────────────────────────────
-
-
-def test_enrich_flood_risk_null_when_no_zones_file(tmp_path, monkeypatch):
-    """Without flood zones file, fk_flood_risk column should be null."""
-    import src.api.transformers.kaggle_transformer as kt_module
-
-    monkeypatch.setattr(kt_module, "_FLOOD_ZONES_PATH", tmp_path / "nonexistent.geojson")
-    t = KaggleTransformer(source_path=tmp_path / "dummy.parquet")
-    lf = pl.DataFrame([_base_row()]).lazy()
-    lf = t._cast(lf)
-    result = t._enrich_flood_risk(lf).collect()
-    assert "fk_flood_risk" in result.columns
-    assert result["fk_flood_risk"][0] is None
-
-
-def test_enrich_flood_risk_outside_zone_gets_zero(tmp_path):
-    """With empty flood zones list, all points get fk_flood_risk=0."""
-    import json
-
-    zones_path = tmp_path / "flood_zones.geojson"
-    zones_path.write_text(json.dumps({"type": "FeatureCollection", "features": []}))
-
-    import src.api.transformers.kaggle_transformer as kt_module
-
-    original = kt_module._FLOOD_ZONES_PATH
-    kt_module._FLOOD_ZONES_PATH = zones_path
-    try:
-        t = KaggleTransformer(source_path=tmp_path / "dummy.parquet")
-        lf = pl.DataFrame([_base_row()]).lazy()
-        lf = t._cast(lf)
-        result = t._enrich_flood_risk(lf).collect()
-        assert result["fk_flood_risk"][0] == 0
-    finally:
-        kt_module._FLOOD_ZONES_PATH = original

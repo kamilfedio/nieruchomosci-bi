@@ -9,7 +9,7 @@ from pathlib import Path
 
 import polars as pl
 from loguru import logger
-from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.dialects.postgresql import insert
 from src.api.config import Config
 from src.api.db.connection import build_engine, get_session, init_db
 from src.api.db.models import FactBenchmarkNbp
@@ -34,7 +34,7 @@ class NBPLoader(BaseLoader):
         self._config = config or Config()
 
     def load(self) -> int:
-        engine = build_engine(self._config.db_path)
+        engine = build_engine(self._config.database_url)
         init_db(engine)
 
         df = pl.read_parquet(self._source_path)
