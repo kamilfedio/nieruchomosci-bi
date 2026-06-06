@@ -22,8 +22,14 @@ dependencies = [
 dev = [
     "basedpyright>=1.39.6",
     "pre-commit>=4.6.0",
+    "pytest>=8.3",
+    "pytest-mock>=3.14",
     "ruff>=0.15.15",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
 
 [build-system]
 requires = ["hatchling"]
