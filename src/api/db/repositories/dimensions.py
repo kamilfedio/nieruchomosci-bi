@@ -391,6 +391,7 @@ class FactListingRepository(BaseRepository[FactListing]):
                 fk_unit_type=r.fk_unit_type,
                 fk_market_type=r.fk_market_type,
                 fk_flood_risk=r.fk_flood_risk,
+                fk_demographics=r.fk_demographics,
                 listing_id=r.listing_id,
                 total_price_pln=r.total_price_pln,
                 area_m2=r.area_m2,
