@@ -1,4 +1,4 @@
-"""Kaggle data pipeline: scrape → stage"""
+"""Kaggle data pipeline: scrape → stage → transform → load"""
 
 from datetime import datetime
 from pathlib import Path
@@ -34,7 +34,29 @@ def kaggle_pipeline():
         path = KaggleStaging(source_path=Path(raw_path)).run()
         return str(path)
 
-    stage(scrape())  # type: ignore
+    @task
+    def transform(staged_path: str) -> str:
+        import sys
+
+        sys.path.insert(0, "/opt/airflow")
+        from src.api.transformers.kaggle_transformer import KaggleTransformer
+
+        path = KaggleTransformer(source_path=Path(staged_path)).run()
+        return str(path)
+
+    @task
+    def load(processed_path: str) -> int:
+        import sys
+
+        sys.path.insert(0, "/opt/airflow")
+        from src.api.loaders.kaggle_loader import KaggleLoader
+
+        return KaggleLoader(source_path=Path(processed_path)).run()
+
+    raw = scrape()
+    staged = stage(raw)  # type: ignore[arg-type]
+    processed = transform(staged)  # type: ignore[arg-type]
+    load(processed)  # type: ignore[arg-type]
 
 
 kaggle_pipeline()
