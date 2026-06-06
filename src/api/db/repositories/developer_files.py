@@ -66,6 +66,14 @@ class DeveloperFileRepository(BaseRepository[DeveloperFile]):
             DeveloperFile.download_url == download_url
         ).update({"raw_path": raw_path})
 
+    def get_urls_by_status(self, status: str) -> list[str]:
+        rows = (
+            self._session.query(DeveloperFile.download_url)
+            .filter(DeveloperFile.status == status)
+            .all()
+        )
+        return [r.download_url for r in rows]
+
     def get_by_cities(self, cities: list[str]) -> list[DeveloperFile]:
         return (
             self._session.query(DeveloperFile)

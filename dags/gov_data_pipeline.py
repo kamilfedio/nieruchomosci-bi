@@ -132,23 +132,35 @@ def gov_data_pipeline():
 
         # Filter out sentinel records from failed stage tasks
         ok = [item for item in staged if not item.get("failed")]
-        if not ok:
-            raise RuntimeError("All stage tasks failed — nothing to transform")
-
         failed_urls = [item["download_url"] for item in staged if item.get("failed")]
-        ok_urls = [item["download_url"] for item in ok]
+        current_ok_urls = [item["download_url"] for item in ok]
+
+        # Also include files stuck in "staged" from previous runs — transformer
+        # reads the whole staging directory so it will process them too.
+        with get_session(engine) as session:
+            prev_staged_urls = DeveloperFileRepository(session).get_urls_by_status(
+                "staged"
+            )
+
+        all_ok_urls = list(dict.fromkeys(current_ok_urls + prev_staged_urls))
+
+        if not all_ok_urls:
+            raise RuntimeError("No staged files to transform")
+
+        staging_dir = Path("data/staging/gov_data")
 
         try:
-            staging_dir = Path(ok[0]["path"]).parent
             processed_path = str(GovDataTransformer(source_path=staging_dir).run())
         except Exception:
             with get_session(engine) as session:
-                DeveloperFileRepository(session).update_status_batch(ok_urls, "failed")
+                DeveloperFileRepository(session).update_status_batch(
+                    all_ok_urls, "failed"
+                )
             raise
 
         with get_session(engine) as session:
             repo = DeveloperFileRepository(session)
-            repo.update_status_batch(ok_urls, "processed")
+            repo.update_status_batch(all_ok_urls, "processed")
             if failed_urls:
                 repo.update_status_batch(failed_urls, "failed")
 
