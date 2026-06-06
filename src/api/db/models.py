@@ -144,6 +144,17 @@ class DimMarketType(MappedAsDataclass, Base):
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
 
 
+class DimFloodRisk(MappedAsDataclass, Base):
+    """SCD0 · 4-row flood risk dictionary (id 0–3)."""
+
+    __tablename__ = "Dim_Flood_Risk"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scenario: Mapped[str] = mapped_column(String(10), unique=True)
+    risk_class: Mapped[str] = mapped_column(String(10))
+    description: Mapped[str | None] = mapped_column(String, default=None)
+
+
 # ── Fact ─────────────────────────────────────────────────────────────────────
 
 
@@ -202,6 +213,9 @@ class FactListing(MappedAsDataclass, Base):
     listing_id: Mapped[str] = mapped_column(String, unique=True)
     total_price_pln: Mapped[float] = mapped_column(Float)
     area_m2: Mapped[float] = mapped_column(Float)
+    fk_flood_risk: Mapped[int | None] = mapped_column(
+        ForeignKey("Dim_Flood_Risk.id"), default=None
+    )
     price_per_m2_pln: Mapped[float | None] = mapped_column(Float, default=None)
     listing_count: Mapped[int] = mapped_column(SmallInteger, default=1)
 

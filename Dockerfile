@@ -9,4 +9,5 @@ RUN pip install --no-cache-dir \
     "loguru==0.7.3" \
     "httpx==0.28.1" \
     "fastexcel==0.20.2" \
-    "kaggle==2.2.0"
+    "kaggle==2.2.0" \
+    "shapely==2.1.0"

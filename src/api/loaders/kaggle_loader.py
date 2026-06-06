@@ -105,6 +105,8 @@ class KaggleLoader(BaseLoader):
                     if price is None or area is None:
                         continue
 
+                    fk_flood = row.get("fk_flood_risk")
+
                     facts.append(
                         FactListing(
                             fk_time=fk_time,
@@ -114,6 +116,9 @@ class KaggleLoader(BaseLoader):
                             listing_id=str(row.get("id") or ""),
                             total_price_pln=float(price),
                             area_m2=float(area),
+                            fk_flood_risk=(
+                                int(fk_flood) if fk_flood is not None else None
+                            ),
                             price_per_m2_pln=row.get("price_per_m2_pln"),
                         )
                     )

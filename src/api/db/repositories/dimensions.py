@@ -1,12 +1,13 @@
 """Repositories for dimensional model:
 DimTime, DimLocation, DimUnitStatus, DimInvestment (SCD2), FactChange,
-DimGeoLocation, DimUnitType, DimMarketType, FactListing."""
+DimGeoLocation, DimUnitType, DimMarketType, DimFloodRisk, FactListing."""
 
 import datetime
 
 from sqlalchemy.dialects.sqlite import insert
 
 from ..models import (
+    DimFloodRisk,
     DimGeoLocation,
     DimInvestment,
     DimLocation,
@@ -387,6 +388,7 @@ class FactListingRepository(BaseRepository[FactListing]):
                 fk_geo_location=r.fk_geo_location,
                 fk_unit_type=r.fk_unit_type,
                 fk_market_type=r.fk_market_type,
+                fk_flood_risk=r.fk_flood_risk,
                 listing_id=r.listing_id,
                 total_price_pln=r.total_price_pln,
                 area_m2=r.area_m2,
@@ -401,3 +403,61 @@ class FactListingRepository(BaseRepository[FactListing]):
             .on_conflict_do_nothing(index_elements=["listing_id"])
         )
         return len(rows)
+
+
+class DimFloodRiskRepository(BaseRepository[DimFloodRisk]):
+    _SEED = [
+        DimFloodRisk(
+            id=0,
+            scenario="none",
+            risk_class="none",
+            description="Outside flood hazard zone",
+        ),
+        DimFloodRisk(
+            id=1,
+            scenario="Q10%",
+            risk_class="high",
+            description="Flood once per 10 years",
+        ),
+        DimFloodRisk(
+            id=2,
+            scenario="Q1%",
+            risk_class="medium",
+            description="Flood once per 100 years",
+        ),
+        DimFloodRisk(
+            id=3,
+            scenario="Q0.2%",
+            risk_class="low",
+            description="Flood once per 500 years",
+        ),
+    ]
+
+    def insert_or_ignore(self, record: DimFloodRisk) -> None:
+        self._session.execute(
+            insert(DimFloodRisk)
+            .values(
+                id=record.id,
+                scenario=record.scenario,
+                risk_class=record.risk_class,
+                description=record.description,
+            )
+            .on_conflict_do_nothing(index_elements=["id"])
+        )
+
+    def insert_or_ignore_batch(self, records: list[DimFloodRisk]) -> int:
+        for r in records:
+            self.insert_or_ignore(r)
+        return len(records)
+
+    def seed(self) -> None:
+        for row in self._SEED:
+            self.insert_or_ignore(row)
+
+    def get_id(self, scenario: str) -> int | None:
+        row = (
+            self._session.query(DimFloodRisk)
+            .filter(DimFloodRisk.scenario == scenario)
+            .first()
+        )
+        return row.id if row else None

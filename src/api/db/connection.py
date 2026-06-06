@@ -49,6 +49,13 @@ def _migrate(engine: Engine) -> None:
                         " ADD COLUMN is_first_snapshot INTEGER NOT NULL DEFAULT 0"
                     )
                 )
+    if "Fact_Listing" in insp.get_table_names():
+        existing_fl = {col["name"] for col in insp.get_columns("Fact_Listing")}
+        with engine.begin() as conn:
+            if "fk_flood_risk" not in existing_fl:
+                conn.execute(
+                    text("ALTER TABLE Fact_Listing ADD COLUMN fk_flood_risk INTEGER")
+                )
 
 
 def init_db(engine: Engine) -> None:
