@@ -71,7 +71,7 @@ class GUSBDLScraper(BaseScraper):
         params: dict[str, object] = {
             "format": "json",
             "unit-level": 6,
-            "page-size": 500,
+            "page-size": 100,
         }
         all_results: list[dict] = []
 
