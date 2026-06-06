@@ -49,6 +49,9 @@ class GovDataLoader(BaseLoader):
             logger.info("No change rows to load")
             return 0
 
+        # Only allow cities from config — prevents garbage in Dim_Location
+        allowed_cities = {c.strip() for c in self._config.cities}
+
         total = 0
         with get_session(engine) as session:
             dim_time = DimTimeRepository(session)
@@ -69,7 +72,9 @@ class GovDataLoader(BaseLoader):
 
                     fk_time = dim_time.get_or_create(snapshot_date)
 
-                    city = row.get("city_norm") or row.get("city") or "UNKNOWN"
+                    city = row.get("city_norm") or row.get("city") or ""
+                    if city not in allowed_cities:
+                        continue
                     fk_loc = dim_loc.get_or_create_id(city)
 
                     status = row.get("status_norm") or "UNKNOWN"

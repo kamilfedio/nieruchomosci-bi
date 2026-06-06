@@ -7,6 +7,7 @@ from .base import BaseTransformer
 _MARKET_TYPE_MAP = {
     "apartmentBuilding": "primary",
     "blockOfFlats": "secondary",
+    "tenement": "secondary",
 }
 
 _MATERIAL_VALID = {"brick", "concrete", "wood", "other"}
