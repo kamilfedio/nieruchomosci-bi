@@ -172,6 +172,24 @@ class FactChange(MappedAsDataclass, Base):
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
 
 
+class FactBenchmarkNbp(MappedAsDataclass, Base):
+    """Grain: city × quarter × market type — quarterly NBP BaRN snapshot."""
+
+    __tablename__ = "Fact_Benchmark_NBP"
+    __table_args__ = (UniqueConstraint("fk_time", "fk_location", "fk_market_type"),)
+
+    fk_time: Mapped[int] = mapped_column(ForeignKey("Dim_Time.id"))
+    fk_location: Mapped[int] = mapped_column(ForeignKey("Dim_Location.id"))
+    fk_market_type: Mapped[int] = mapped_column(ForeignKey("Dim_Market_Type.id"))
+    avg_offer_price_m2_pln: Mapped[float | None] = mapped_column(Float, default=None)
+    avg_transaction_price_m2_pln: Mapped[float | None] = mapped_column(
+        Float, default=None
+    )
+    hedonic_index: Mapped[float | None] = mapped_column(Float, default=None)
+
+    id: Mapped[int] = mapped_column(primary_key=True, init=False)
+
+
 class FactListing(MappedAsDataclass, Base):
     """Grain: one Kaggle listing."""
 

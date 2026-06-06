@@ -1,4 +1,4 @@
-"""NBP data pipeline: scrape → stage"""
+"""NBP data pipeline: scrape → stage → transform → load"""
 
 from datetime import datetime
 from pathlib import Path
@@ -36,7 +36,29 @@ def nbp_pipeline():
         path = NBPStaging(source_path=Path(raw_path)).run()
         return str(path)
 
-    stage(scrape())  # type: ignore
+    @task
+    def transform(staged_path: str) -> str:
+        import sys
+
+        sys.path.insert(0, "/opt/airflow")
+        from src.api.transformers.nbp_transformer import NBPTransformer
+
+        path = NBPTransformer(source_path=Path(staged_path)).run()
+        return str(path)
+
+    @task
+    def load(processed_path: str) -> int:
+        import sys
+
+        sys.path.insert(0, "/opt/airflow")
+        from src.api.loaders.nbp_loader import NBPLoader
+
+        return NBPLoader(source_path=Path(processed_path)).run()
+
+    raw = scrape()
+    staged = stage(raw)  # type: ignore[arg-type]
+    processed = transform(staged)  # type: ignore[arg-type]
+    load(processed)  # type: ignore[arg-type]
 
 
 nbp_pipeline()
