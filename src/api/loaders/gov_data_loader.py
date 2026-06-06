@@ -93,6 +93,7 @@ class GovDataLoader(BaseLoader):
                             fk_location=fk_loc,
                             unit_id=row.get("unit_id") or "",
                             download_url=row.get("download_url") or "",
+                            is_first_snapshot=bool(row.get("is_first_snapshot")),
                             is_price_changed=bool(row.get("is_price_changed")),
                             is_status_changed=bool(row.get("is_status_changed")),
                             is_price_drop=bool(row.get("is_price_drop")),

@@ -39,6 +39,16 @@ def _migrate(engine: Engine) -> None:
                 conn.execute(
                     text("ALTER TABLE developer_files ADD COLUMN raw_path TEXT")
                 )
+    if "Fact_Change" in insp.get_table_names():
+        existing_fc = {col["name"] for col in insp.get_columns("Fact_Change")}
+        with engine.begin() as conn:
+            if "is_first_snapshot" not in existing_fc:
+                conn.execute(
+                    text(
+                        "ALTER TABLE Fact_Change"
+                        " ADD COLUMN is_first_snapshot INTEGER NOT NULL DEFAULT 0"
+                    )
+                )
 
 
 def init_db(engine: Engine) -> None:

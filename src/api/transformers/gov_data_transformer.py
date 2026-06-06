@@ -259,7 +259,9 @@ class GovDataTransformer(BaseTransformer):
 
     def _flags(self, df: pl.LazyFrame) -> pl.LazyFrame:
         has_prev = pl.col("prev_price").is_not_null()
+        is_first = pl.col("prev_price").is_null() & pl.col("prev_status_norm").is_null()
         return df.with_columns(
+            is_first.alias("is_first_snapshot"),
             (has_prev & (pl.col("total_price_gross") != pl.col("prev_price"))).alias(
                 "is_price_changed"
             ),
@@ -284,7 +286,11 @@ class GovDataTransformer(BaseTransformer):
         )
 
     def _filter_changes(self, df: pl.LazyFrame) -> pl.LazyFrame:
-        return df.filter(pl.col("is_price_changed") | pl.col("is_status_changed"))
+        return df.filter(
+            pl.col("is_first_snapshot")
+            | pl.col("is_price_changed")
+            | pl.col("is_status_changed")
+        )
 
     # ── Override run — window functions require collect, not streaming ────────
 

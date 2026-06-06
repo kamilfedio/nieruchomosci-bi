@@ -109,6 +109,7 @@ class FactChange(MappedAsDataclass, Base):
     unit_id: Mapped[str] = mapped_column(String)
     download_url: Mapped[str] = mapped_column(String)
 
+    is_first_snapshot: Mapped[bool] = mapped_column(Boolean, default=False)
     is_price_changed: Mapped[bool] = mapped_column(Boolean, default=False)
     is_status_changed: Mapped[bool] = mapped_column(Boolean, default=False)
     is_price_drop: Mapped[bool] = mapped_column(Boolean, default=False)
