@@ -65,15 +65,21 @@ class DimTimeRepository(BaseRepository[DimTime]):
     def get_or_create(self, date: datetime.date) -> int:
         """Return id (YYYYMMDD) for given date, inserting if missing."""
         date_id = int(date.strftime("%Y%m%d"))
+        quarter = (date.month - 1) // 3 + 1
         self.insert_or_ignore(
             DimTime(
                 id=date_id,
                 date=date,
                 year=date.year,
-                quarter=(date.month - 1) // 3 + 1,
+                quarter=quarter,
                 month=date.month,
+                week=int(date.strftime("%V")),
                 day=date.day,
                 day_of_week=date.isoweekday(),
+                day_name=date.strftime("%A"),
+                month_name=date.strftime("%B"),
+                year_quarter=f"{date.year}Q{quarter}",
+                is_weekend=date.isoweekday() >= 6,
             )
         )
         return date_id

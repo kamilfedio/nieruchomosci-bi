@@ -39,14 +39,14 @@ def setup_task_env() -> None:
         sys.path.insert(0, "/opt/airflow")
 
     try:
-        from airflow.models import Variable  # noqa: PLC0415
+        from airflow.sdk import Variable  # noqa: PLC0415
     except ImportError:
         return  # not inside an Airflow worker — .env / defaults are used instead
 
     for name in _AIRFLOW_VAR_NAMES:
         if name not in os.environ:
             try:
-                val: str | None = Variable.get(name, default_var=None)
+                val: str | None = Variable.get(name, default=None)
                 if val:
                     os.environ[name] = val
             except Exception:  # noqa: BLE001, S110

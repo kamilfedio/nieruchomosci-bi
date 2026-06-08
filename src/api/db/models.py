@@ -62,6 +62,20 @@ class ColumnMappingCache(MappedAsDataclass, Base):
     )
 
 
+class GeocodingCache(MappedAsDataclass, Base):
+    """Persistent cache of address → (lat, lon) from Google Maps Geocoding API."""
+
+    __tablename__ = "geocoding_cache"
+
+    cache_key: Mapped[str] = mapped_column(String(32), primary_key=True)
+    address: Mapped[str] = mapped_column(Text)
+    latitude: Mapped[float | None] = mapped_column(Float, default=None)
+    longitude: Mapped[float | None] = mapped_column(Float, default=None)
+    geocoded_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), init=False
+    )
+
+
 # ── Dimensions ───────────────────────────────────────────────────────────────
 
 
@@ -74,8 +88,13 @@ class DimTime(MappedAsDataclass, Base):
     year: Mapped[int] = mapped_column(SmallInteger)
     quarter: Mapped[int] = mapped_column(SmallInteger)
     month: Mapped[int] = mapped_column(SmallInteger)
+    week: Mapped[int] = mapped_column(SmallInteger)
     day: Mapped[int] = mapped_column(SmallInteger)
     day_of_week: Mapped[int] = mapped_column(SmallInteger)
+    day_name: Mapped[str] = mapped_column(String(10))
+    month_name: Mapped[str] = mapped_column(String(10))
+    year_quarter: Mapped[str] = mapped_column(String(7))
+    is_weekend: Mapped[bool] = mapped_column(Boolean)
 
 
 class DimLocation(MappedAsDataclass, Base):
@@ -90,6 +109,10 @@ class DimUnitStatus(MappedAsDataclass, Base):
 
     status_norm: Mapped[str] = mapped_column(String(20), unique=True)
     status_label: Mapped[str | None] = mapped_column(String, default=None)
+    status_group: Mapped[str] = mapped_column(String(20), default="INACTIVE")
+    is_available: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_sold: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_reserved: Mapped[bool] = mapped_column(Boolean, default=False)
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
 
 
@@ -99,9 +122,9 @@ class DimInvestment(MappedAsDataclass, Base):
     __tablename__ = "Dim_Investment"
 
     valid_from: Mapped[datetime.date] = mapped_column(Date)
-
     developer_name: Mapped[str | None] = mapped_column(Text, default=None)
     investment_id: Mapped[str | None] = mapped_column(String, default=None)
+    investment_name: Mapped[str | None] = mapped_column(Text, default=None)
     regon: Mapped[str | None] = mapped_column(String(14), default=None)
     city: Mapped[str | None] = mapped_column(String, default=None)
     street: Mapped[str | None] = mapped_column(String, default=None)
@@ -147,6 +170,8 @@ class DimUnitType(MappedAsDataclass, Base):
     has_elevator: Mapped[bool | None] = mapped_column(Boolean, default=None)
     has_parking: Mapped[bool | None] = mapped_column(Boolean, default=None)
     has_storage: Mapped[bool | None] = mapped_column(Boolean, default=None)
+    has_security: Mapped[bool | None] = mapped_column(Boolean, default=None)
+    ownership_form: Mapped[str | None] = mapped_column(String(30), default=None)
 
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
 
@@ -158,6 +183,7 @@ class DimMarketType(MappedAsDataclass, Base):
 
     market_code: Mapped[str] = mapped_column(String(20), unique=True)
     market_label: Mapped[str | None] = mapped_column(String(50), default=None)
+    segment_nbp: Mapped[str | None] = mapped_column(String(5), default=None)
 
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
 
@@ -188,7 +214,9 @@ class DimFloodRisk(MappedAsDataclass, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     scenario: Mapped[str] = mapped_column(String(10), unique=True)
     risk_class: Mapped[str] = mapped_column(String(10))
+    numeric_risk_class: Mapped[int | None] = mapped_column(Integer, default=None)
     description: Mapped[str | None] = mapped_column(String, default=None)
+    depth_m: Mapped[float | None] = mapped_column(Float, default=None)
 
 
 class FloodZone(Base):
@@ -212,7 +240,7 @@ class FactChange(MappedAsDataclass, Base):
     """One row per (unit, snapshot) where price OR status changed."""
 
     __tablename__ = "Fact_Change"
-    __table_args__ = (UniqueConstraint("download_url", "unit_id"),)
+    __table_args__ = (UniqueConstraint("download_url", "unit_id", "fk_time"),)
 
     fk_time: Mapped[int] = mapped_column(ForeignKey("Dim_Time.id"))
     fk_investment: Mapped[int] = mapped_column(ForeignKey("Dim_Investment.id"))
@@ -227,8 +255,12 @@ class FactChange(MappedAsDataclass, Base):
     is_price_drop: Mapped[bool] = mapped_column(Boolean, default=False)
     unit_value_pln: Mapped[float | None] = mapped_column(Float, default=None)
     prev_price: Mapped[float | None] = mapped_column(Float, default=None)
+    prev_status: Mapped[str | None] = mapped_column(String(20), default=None)
     change_amount_pln: Mapped[float | None] = mapped_column(Float, default=None)
     price_per_m2_pln: Mapped[float | None] = mapped_column(Float, default=None)
+    fk_flood_risk: Mapped[int | None] = mapped_column(
+        ForeignKey("Dim_Flood_Risk.id"), default=None
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
 
@@ -252,15 +284,16 @@ class FactBenchmarkNbp(MappedAsDataclass, Base):
 
 
 class FactListing(MappedAsDataclass, Base):
-    """Grain: one Kaggle listing."""
+    """Grain: one Kaggle listing at one snapshot date."""
 
     __tablename__ = "Fact_Listing"
+    __table_args__ = (UniqueConstraint("listing_id", "fk_time"),)
 
     fk_time: Mapped[int] = mapped_column(ForeignKey("Dim_Time.id"))
     fk_geo_location: Mapped[int] = mapped_column(ForeignKey("Dim_Geo_Location.id"))
     fk_unit_type: Mapped[int] = mapped_column(ForeignKey("Dim_Unit_Type.id"))
     fk_market_type: Mapped[int] = mapped_column(ForeignKey("Dim_Market_Type.id"))
-    listing_id: Mapped[str] = mapped_column(String, unique=True)
+    listing_id: Mapped[str] = mapped_column(String)
     total_price_pln: Mapped[float] = mapped_column(Float)
     area_m2: Mapped[float] = mapped_column(Float)
     fk_flood_risk: Mapped[int | None] = mapped_column(
