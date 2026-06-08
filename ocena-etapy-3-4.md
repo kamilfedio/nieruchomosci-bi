@@ -1,6 +1,6 @@
 # Ocena realizacji Etapów 3 i 4 — nieruchomosci-bi
 
-> Data analizy: 2026-06-08
+> Data analizy: 2026-06-08 (zaktualizowano: 2026-06-08)
 
 ---
 
@@ -69,10 +69,10 @@
 - Testy integracyjne: 6 plików (`test_kpi_views.py`, `test_kaggle_loader.py` itd.) — weryfikują KPI i ładowanie do DB
 - Filtry w transformerach: warunki NULL, zakresy liczbowe, wymagane kolumny
 
-**Brak lub niepełne:**
-- **Zdefiniowane „punkty kontrolne" per tabela** — filtry istnieją w kodzie, ale brakuje formalnej specyfikacji reguł per tabela z ich dokumentacją w raporcie
-- **Tabela błędów** — odrzucone rekordy są logowane lub ignorowane, ale nie trafiają do osobnej tabeli `stg_errors` / `rejected_records`
-- **Automatyczny raport jakości** w środowisku produkcyjnym — testy działają przy `pytest`, ale nie są wywoływane przez DAG po załadowaniu
+**Uzupełnione (2026-06-08):**
+- **Zdefiniowane „punkty kontrolne" per tabela** — `src/api/quality/rules.py` definiuje formalne reguły `DQRule` (name, description, severity, predicate) per źródło (kaggle, gov_data, nbp, gus_bdl); udokumentowane w `raport-bi.md` sekcja 5b
+- **Tabela błędów** — odrzucone wiersze trafiają do `stg_rejected_records` (JSONB `row_data` + metadata: source, batch_id, rule_name, severity); `DQChecker.save_rejected()` wywoływany przez każdy transformer
+- **Automatyczny raport jakości** — task `validate()` po `load()` w każdym DAGu wywołuje `DQChecker.source_summary()` i loguje ostrzeżenie jeśli ERROR > 0
 
 ---
 
@@ -87,13 +87,11 @@
 | Staging / oczyszczanie | ✅ Pełne | BaseStaging, transformery, Polars |
 | Wymiary + kolumny obliczeniowe | ✅ Pełne | |
 | Miary / agregaty (odpowiednik DAX) | ✅ Pełne | 12 widoków KPI SQL |
-| **Role / bezpieczeństwo** | ❌ Brak | Zero GRANT/REVOKE, brak ról PostgreSQL |
-| **Tabela błędów / odrzuceń** | ❌ Brak | Odrzucone wiersze nie są nigdzie zapisywane |
-| Automatyczna kontrola jakości | ⚠️ Częściowe | Testy pytest istnieją; nie są wyzwalane przez DAG |
-| Raport z opisem etapów 1–4 | ✅ Pełne | `raport-bi.md` 511 linii |
+| **Role / bezpieczeństwo** | ✅ Pełne | `analyst_ro` + `admin_rw`; migracja 004; autentykacja SHA-256 w dashboardzie |
+| **Tabela błędów / odrzuceń** | ✅ Pełne | `stg_rejected_records` + `DQChecker.save_rejected()` w każdym transformerze |
+| Automatyczna kontrola jakości | ✅ Pełne | `@task validate()` po `load()` w każdym DAGu; 10 testów jednostkowych |
+| Raport z opisem etapów 1–4 | ✅ Pełne | `raport-bi.md` (sekcje 5a, 5b uzupełnione) |
 | Ciągłość aktualizacji (iteracyjny napływ) | ✅ Pełne | Harmonogramy + ON CONFLICT + backfill |
 
-**Krytyczne braki przed oddaniem:**
-1. **Role PostgreSQL** — jedyna rzecz jawnie wymieniona w zadaniu, której nie ma w kodzie w ogóle
-2. **Graficzny ERD** — można wygenerować z kodu ORM lub narysować ręcznie
-3. Opcjonalnie: wywołanie testów pytest jako ostatnie zadanie DAGa dla automatycznej kontroli jakości po załadowaniu
+**Pozostałe punkty do rozważenia:**
+1. **Graficzny ERD** — ASCII art w `raport-bi.md`; można uzupełnić o PNG/SVG z narzędzia (np. DBeaver, dbdiagram.io)
