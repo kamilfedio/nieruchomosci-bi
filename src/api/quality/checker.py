@@ -83,10 +83,21 @@ class DQChecker:
 
         return passed_df.lazy(), rejected_df
 
-    def save_rejected(self, rejected: pl.DataFrame, db_url: str) -> int:
-        """Persist rejected rows to stg_rejected_records. Returns row count."""
+    def save_rejected(
+        self, rejected: pl.DataFrame, db_url: str, max_per_rule: int = 500
+    ) -> int:
+        """Persist a sample of rejected rows to stg_rejected_records.
+
+        At most *max_per_rule* rows are stored per rule to keep the table lean
+        when a single rule rejects millions of rows (e.g. missing prices in
+        gov_data files). The total rejection count is always logged.
+
+        Uses SQLAlchemy Core bulk insert (fast path) instead of ORM add_all.
+        """
         if rejected.is_empty():
             return 0
+
+        from sqlalchemy import insert
 
         from src.api.db.connection import build_engine, get_session
         from src.api.db.models import StagingRejectedRecord
@@ -100,32 +111,50 @@ class DQChecker:
         }
         data_cols = [c for c in rejected.columns if c not in dq_cols]
 
-        records: list[StagingRejectedRecord] = []
-        for row in rejected.to_dicts():
+        # Sample: take at most max_per_rule rows per rule_name
+        sampled = rejected.group_by("dq_rule_name").map_groups(
+            lambda g: g.head(max_per_rule)
+        )
+        total_rejected = len(rejected)
+        total_saved = len(sampled)
+
+        rows_to_insert: list[dict] = []
+        for row in sampled.to_dicts():
             row_data: dict[str, object] = {}
             for k in data_cols:
                 v = row.get(k)
                 if v is not None and not isinstance(v, (str, int, float, bool)):
                     v = str(v)
                 row_data[k] = v
-
-            records.append(
-                StagingRejectedRecord(
-                    source=row["dq_source"],
-                    batch_id=row.get("dq_batch_id"),
-                    rule_name=row["dq_rule_name"],
-                    rule_description=row.get("dq_rule_description"),
-                    severity=row["dq_severity"],
-                    row_data=row_data,
-                )
+            rows_to_insert.append(
+                {
+                    "source": row["dq_source"],
+                    "batch_id": row.get("dq_batch_id"),
+                    "rule_name": row["dq_rule_name"],
+                    "rule_description": row.get("dq_rule_description"),
+                    "severity": row["dq_severity"],
+                    "row_data": row_data,
+                }
             )
 
         engine = build_engine(db_url)
         with get_session(engine) as session:
-            session.add_all(records)
+            session.execute(insert(StagingRejectedRecord), rows_to_insert)
 
-        logger.info("Saved {} rejected record(s) to stg_rejected_records", len(records))
-        return len(records)
+        if total_saved < total_rejected:
+            logger.warning(
+                "DQ [{}]: {} rejected rows — saved {} sample(s) per rule "
+                "(max_per_rule={})",
+                self._source,
+                total_rejected,
+                total_saved,
+                max_per_rule,
+            )
+        else:
+            logger.info(
+                "Saved {} rejected record(s) to stg_rejected_records", total_saved
+            )
+        return total_rejected
 
     @classmethod
     def source_summary(

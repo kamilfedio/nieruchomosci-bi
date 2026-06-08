@@ -175,16 +175,16 @@ def test_save_rejected_calls_db(simple_df: pl.DataFrame) -> None:
     ):
         count = checker.save_rejected(rejected, "postgresql://test")
 
+    # save_rejected returns total_rejected count (not sampled count)
     assert count == len(rejected)
-    mock_session.add_all.assert_called_once()
-    inserted = mock_session.add_all.call_args[0][0]
-    assert len(inserted) == count
-    # Verify each record has expected attributes
-    for rec in inserted:
-        assert rec.source == "src"
-        assert rec.batch_id == "b"
-        assert rec.rule_name == "p"
-        assert rec.severity == "ERROR"
+    mock_session.execute.assert_called_once()
+    _stmt, inserted_rows = mock_session.execute.call_args[0]
+    assert len(inserted_rows) <= count
+    for row in inserted_rows:
+        assert row["source"] == "src"
+        assert row["batch_id"] == "b"
+        assert row["rule_name"] == "p"
+        assert row["severity"] == "ERROR"
 
 
 # ── Tests: rule sets ──────────────────────────────────────────────────────────
