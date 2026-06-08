@@ -1,6 +1,51 @@
+# Virtual environment
 .venv/
+
+# Environment variables (secrets — never commit)
 .env
+
+# Python bytecode / cache
 __pycache__/
-data/
-logs/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# OS artefacts
+.DS_Store
 .DS_store
+
+# IDE / editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Data directories (raw / staging / processed files)
+data/
+
+# Logs
+logs/
+*.log
+
+# Airflow local runtime files
+airflow.db
+airflow.cfg
+standalone_admin_password.txt
+webserver_config.py
+airflow/logs/
+
+# Streamlit secrets
+.streamlit/secrets.toml
+
+# Temporary scrub files
+secrets_to_scrub.txt

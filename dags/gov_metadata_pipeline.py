@@ -16,9 +16,9 @@ from airflow.sdk import dag, task
 def gov_metadata_pipeline():
     @task
     def scrape() -> str:
-        import sys
+        from _inject_env import setup_task_env
 
-        sys.path.insert(0, "/opt/airflow")
+        setup_task_env()
         from src.api.scrapers.gov_metadata_scraper import GovMetadaScraper
 
         path = GovMetadaScraper(
@@ -28,9 +28,9 @@ def gov_metadata_pipeline():
 
     @task
     def stage(raw_path: str) -> str:
-        import sys
+        from _inject_env import setup_task_env
 
-        sys.path.insert(0, "/opt/airflow")
+        setup_task_env()
         from src.api.staging.gov_metadata_staging import GovMetadataStaging
 
         path = GovMetadataStaging(source_path=Path(raw_path)).run()
@@ -38,9 +38,9 @@ def gov_metadata_pipeline():
 
     @task
     def transform(staging_path: str) -> str:
-        import sys
+        from _inject_env import setup_task_env
 
-        sys.path.insert(0, "/opt/airflow")
+        setup_task_env()
         from src.api.transformers.gov_metadata_transformer import GovMetadataTransformer
 
         path = GovMetadataTransformer(source_path=Path(staging_path)).run()
@@ -48,9 +48,9 @@ def gov_metadata_pipeline():
 
     @task
     def load(processed_path: str) -> int:
-        import sys
+        from _inject_env import setup_task_env
 
-        sys.path.insert(0, "/opt/airflow")
+        setup_task_env()
         from src.api.loaders.gov_metadata_loader import GovMetadataLoader
 
         return GovMetadataLoader(source_path=Path(processed_path)).run()

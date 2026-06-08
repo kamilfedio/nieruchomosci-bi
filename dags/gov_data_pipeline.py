@@ -16,9 +16,9 @@ from airflow.sdk import dag, task
 def gov_data_pipeline():
     @task
     def scrape() -> list[dict[str, str]]:
-        import sys
+        from _inject_env import setup_task_env
 
-        sys.path.insert(0, "/opt/airflow")
+        setup_task_env()
         from src.api.config import Config
         from src.api.db.connection import build_engine, get_session, init_db
         from src.api.db.repositories.developer_files import DeveloperFileRepository
@@ -30,7 +30,7 @@ def gov_data_pipeline():
 
         with get_session(engine) as session:
             rows = DeveloperFileRepository(session).get_pending_by_cities(
-                config.cities, limit=config.scrape_limit
+                config.cities, limit=config.gov_data_batch_size
             )
             pending = [
                 {
@@ -82,9 +82,9 @@ def gov_data_pipeline():
 
     @task
     def stage(item: dict[str, str]) -> dict[str, str]:
-        import sys
+        from _inject_env import setup_task_env
 
-        sys.path.insert(0, "/opt/airflow")
+        setup_task_env()
         from src.api.config import Config
         from src.api.db.connection import build_engine, get_session, init_db
         from src.api.db.repositories.developer_files import DeveloperFileRepository
@@ -118,9 +118,9 @@ def gov_data_pipeline():
 
     @task
     def transform(staged: list[dict[str, str]]) -> str:
-        import sys
+        from _inject_env import setup_task_env
 
-        sys.path.insert(0, "/opt/airflow")
+        setup_task_env()
         from src.api.config import Config
         from src.api.db.connection import build_engine, get_session, init_db
         from src.api.db.repositories.developer_files import DeveloperFileRepository
@@ -168,9 +168,9 @@ def gov_data_pipeline():
 
     @task
     def load(processed_path: str) -> int:
-        import sys
+        from _inject_env import setup_task_env
 
-        sys.path.insert(0, "/opt/airflow")
+        setup_task_env()
         from src.api.loaders.gov_data_loader import GovDataLoader
 
         return GovDataLoader(source_path=Path(processed_path)).run()

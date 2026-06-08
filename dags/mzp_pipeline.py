@@ -20,9 +20,9 @@ from airflow.sdk import dag, task
 def mzp_pipeline():
     @task
     def scrape() -> str:
-        import sys
+        from _inject_env import setup_task_env
 
-        sys.path.insert(0, "/opt/airflow")
+        setup_task_env()
         from src.api.scrapers.mzp_scraper import MZPScraper
 
         path = MZPScraper(verify_ssl=False).run()
@@ -30,9 +30,9 @@ def mzp_pipeline():
 
     @task
     def transform(raw_path: str) -> str:
-        import sys
+        from _inject_env import setup_task_env
 
-        sys.path.insert(0, "/opt/airflow")
+        setup_task_env()
         from src.api.transformers.mzp_transformer import MZPTransformer
 
         path = MZPTransformer(source_path=Path(raw_path)).run()
@@ -40,9 +40,9 @@ def mzp_pipeline():
 
     @task
     def load(processed_path: str) -> int:
-        import sys
+        from _inject_env import setup_task_env
 
-        sys.path.insert(0, "/opt/airflow")
+        setup_task_env()
         from src.api.loaders.mzp_loader import MZPLoader
 
         return MZPLoader(source_path=Path(processed_path)).run()

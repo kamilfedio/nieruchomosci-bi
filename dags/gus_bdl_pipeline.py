@@ -1,7 +1,7 @@
 """GUS BDL pipeline: scrape → transform → load (annual, runs mid-March).
 
 GUS publishes updated demographic data in Q1 each year.
-Set BDL_API_KEY in .env to avoid IP rate-limiting.
+Set BDL_API_KEY in .env or as an Airflow Variable to avoid IP rate-limiting.
 """
 
 from datetime import datetime
@@ -20,9 +20,9 @@ from airflow.sdk import dag, task
 def gus_bdl_pipeline():
     @task
     def scrape() -> str:
-        import sys
+        from _inject_env import setup_task_env
 
-        sys.path.insert(0, "/opt/airflow")
+        setup_task_env()
         from src.api.scrapers.gus_bdl_scraper import GUSBDLScraper
 
         path = GUSBDLScraper().run()
@@ -30,9 +30,9 @@ def gus_bdl_pipeline():
 
     @task
     def transform(raw_dir: str) -> str:
-        import sys
+        from _inject_env import setup_task_env
 
-        sys.path.insert(0, "/opt/airflow")
+        setup_task_env()
         from src.api.transformers.gus_bdl_transformer import GUSBDLTransformer
 
         path = GUSBDLTransformer(source_path=Path(raw_dir)).run()
@@ -40,9 +40,9 @@ def gus_bdl_pipeline():
 
     @task
     def load(processed_path: str) -> int:
-        import sys
+        from _inject_env import setup_task_env
 
-        sys.path.insert(0, "/opt/airflow")
+        setup_task_env()
         from src.api.loaders.gus_bdl_loader import GUSBDLLoader
 
         return GUSBDLLoader(source_path=Path(processed_path)).run()
