@@ -49,3 +49,16 @@ airflow/logs/
 
 # Temporary scrub files
 secrets_to_scrub.txt
+
+# Claude Code project memory / session files
+.claude/
+
+# Ruff cache
+.ruff_cache/
+
+# Project docs / design files (kept locally, not in repo)
+ARCHITECTURE.md
+CLAUDE.md
+design.md
+erd.md
+raport-bi.md
