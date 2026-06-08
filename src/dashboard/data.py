@@ -267,8 +267,10 @@ def _delta_absolute(current: int | None, previous: int | None) -> int | None:
 
 @st.cache_resource
 def ensure_database_schema(_db_url: str) -> None:
-    """Create tables and KPI views if missing (idempotent)."""
-    init_db(build_engine(_db_url))
+    """Create tables and KPI views if missing (idempotent). Always uses the
+    admin connection — analyst_ro lacks the ownership required for DDL."""
+    admin_url = Config().database_url
+    init_db(build_engine(admin_url))
 
 
 @st.cache_data(ttl=300)

@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 from src.api.config import Config
 from src.dashboard import charts
+from src.dashboard.auth import render_login_form
 from src.dashboard.constants import (
     CITIES,
     FLOOD_LABELS,
@@ -123,6 +124,7 @@ st.markdown(
 
 def _init_session_state() -> None:
     defaults = {
+        "role": None,
         "cities": CITIES,
         "market_label": "Wszystkie",
         "flood_scenarios": FLOOD_SCENARIOS,
@@ -309,16 +311,16 @@ def _render_map_section(
         )
 
     # Load data — simplified polygons from PostGIS (~few MB vs 384 MB flat file)
-    geojson = load_mzp_from_db(config.database_url)
+    geojson = load_mzp_from_db(config.analyst_database_url)
     points_df = load_map_points(
-        config.database_url,
+        config.analyst_database_url,
         city_filter=tuple(flt.cities),
         year_start=flt.period_start[0],
         year_end=flt.period_end[0],
         max_points=max_pts,
     )
     dev_df = load_developer_map_points(
-        config.database_url, city_filter=tuple(flt.cities)
+        config.analyst_database_url, city_filter=tuple(flt.cities)
     )
     city_kpi_df = build_city_kpi(kpi_data, MAP_KPI_OPTIONS[kpi_label], flt)
 
@@ -340,17 +342,25 @@ def _render_map_section(
 def main() -> None:
     _init_session_state()
 
-    st.title("Mapa ryzyka i cen polskiego rynku mieszkaniowego")
-
     config = Config()
+
+    if not st.session_state.get("role"):
+        render_login_form(config)
+        return
+
+    if st.sidebar.button("Wyloguj"):
+        st.session_state["role"] = None
+        st.rerun()
+
+    st.title("Mapa ryzyka i cen polskiego rynku mieszkaniowego")
     try:
         with st.spinner("Ładowanie danych z hurtowni..."):
-            kpi_data = load_kpi_views(config.database_url)
-            nbp = load_nbp_benchmark(config.database_url)
-            demographics = load_demographics(config.database_url)
-            drops_detail = load_price_drops_detail(config.database_url)
-            pipeline = load_pipeline_stats(config.database_url)
-            material_df = load_material_price_data(config.database_url)
+            kpi_data = load_kpi_views(config.analyst_database_url)
+            nbp = load_nbp_benchmark(config.analyst_database_url)
+            demographics = load_demographics(config.analyst_database_url)
+            drops_detail = load_price_drops_detail(config.analyst_database_url)
+            pipeline = load_pipeline_stats(config.analyst_database_url)
+            material_df = load_material_price_data(config.analyst_database_url)
     except Exception as exc:
         st.error(f"Nie udało się połączyć z bazą danych: {exc}")
         st.info("Uruchom `docker compose up -d` i załaduj dane pipeline'ami Airflow.")
@@ -374,7 +384,7 @@ def main() -> None:
         f"{flt.period_end[0]} Q{flt.period_end[1]}"
     )
 
-    dev_summary_df = load_developer_summary(config.database_url, tuple(flt.cities))
+    dev_summary_df = load_developer_summary(config.analyst_database_url, tuple(flt.cities))
 
     metrics = compute_kpi_metrics(kpi_data, nbp, flt, demographics)
     views = get_filtered_views(kpi_data, flt)
@@ -592,88 +602,90 @@ def main() -> None:
 
     st.divider()
 
-    # ── Statystyki tabel wymiarów ─────────────────────────────────────────────
-    with st.expander("Statystyki tabel wymiarów", expanded=False):
-        dim_stats = load_dimension_stats(config.database_url)
+    # ── Statystyki tabel wymiarów (tylko admin) ───────────────────────────────
+    if st.session_state.get("role") == "admin":
+        with st.expander("Statystyki tabel wymiarów", expanded=False):
+            dim_stats = load_dimension_stats(config.analyst_database_url)
 
-        st.markdown("#### Dim_Geo_Location — zasięg geograficzny")
-        if not dim_stats["geo"].empty:
-            st.dataframe(dim_stats["geo"], hide_index=True, width="stretch")
-        st.caption(
-            "Unikalne lokalizacje (city + lat_r/lon_r ≈ 111 m) i dzielnice per miasto."
-        )
-
-        dcol1, dcol2 = st.columns(2)
-        with dcol1:
-            st.markdown("#### Dim_Unit_Type — rozkład atrybutów")
-            if not dim_stats["unit_type"].empty:
-                st.dataframe(
-                    dim_stats["unit_type"], hide_index=True, width="stretch"
-                )
+            st.markdown("#### Dim_Geo_Location — zasięg geograficzny")
+            if not dim_stats["geo"].empty:
+                st.dataframe(dim_stats["geo"], hide_index=True, width="stretch")
             st.caption(
-                "Rozkład liczby pokoi. Kolumny pct_* = % typów lokali z danym udogodnieniem."
-            )
-        with dcol2:
-            st.markdown("#### Dim_Demographics — wskaźniki GUS BDL")
-            if not dim_stats["demographics"].empty:
-                st.dataframe(
-                    dim_stats["demographics"],
-                    hide_index=True,
-                    width="stretch",
-                )
-            st.caption("Zakres lat, śr. wynagrodzenie brutto i populacja per miasto.")
-
-        dcol3, dcol4 = st.columns(2)
-        with dcol3:
-            st.markdown("#### Dim_Investment — aktywność deweloperska")
-            if not dim_stats["investment"].empty:
-                st.dataframe(
-                    dim_stats["investment"],
-                    hide_index=True,
-                    width="stretch",
-                )
-            st.caption("Unikalnych deweloperów i inwestycji per miasto (SCD2).")
-        with dcol4:
-            st.markdown("#### Dim_Flood_Risk + flood_zones")
-            if not dim_stats["flood_risk"].empty:
-                st.dataframe(
-                    dim_stats["flood_risk"],
-                    hide_index=True,
-                    width="stretch",
-                )
-            st.caption("Słownik 4-wierszowy + liczba poligonów MZP per scenariusz.")
-
-        st.markdown("#### Dim_Time — zakres danych")
-        tr = dim_stats.get("time_range", pd.DataFrame())
-        if not tr.empty:
-            tm1, tm2, tm3 = st.columns(3)
-            tm1.metric("Najstarszy wpis", str(tr["min_date"].iloc[0]))
-            tm2.metric("Najnowszy wpis", str(tr["max_date"].iloc[0]))
-            tm3.metric(
-                "Zakres (lata)",
-                f"{tr['min_year'].iloc[0]} – {tr['max_year'].iloc[0]}",
+                "Unikalne lokalizacje (city + lat_r/lon_r ≈ 111 m) i dzielnice per miasto."
             )
 
-    st.divider()
+            dcol1, dcol2 = st.columns(2)
+            with dcol1:
+                st.markdown("#### Dim_Unit_Type — rozkład atrybutów")
+                if not dim_stats["unit_type"].empty:
+                    st.dataframe(
+                        dim_stats["unit_type"], hide_index=True, width="stretch"
+                    )
+                st.caption(
+                    "Rozkład liczby pokoi. Kolumny pct_* = % typów lokali z danym udogodnieniem."
+                )
+            with dcol2:
+                st.markdown("#### Dim_Demographics — wskaźniki GUS BDL")
+                if not dim_stats["demographics"].empty:
+                    st.dataframe(
+                        dim_stats["demographics"],
+                        hide_index=True,
+                        width="stretch",
+                    )
+                st.caption("Zakres lat, śr. wynagrodzenie brutto i populacja per miasto.")
 
-    # ── Status ETL ────────────────────────────────────────────────────────────
-    with st.expander("Status danych i pipeline ETL", expanded=False):
-        total = int(pipeline["row_count"].sum())  # type: ignore[arg-type]
-        st.metric(
-            "Łączna liczba rekordów w tabelach faktów i wymiarów",
-            f"{total:,}".replace(",", " "),
-        )
-        st.caption(
-            "Pipelines Airflow: mzp_pipeline → gus_bdl_pipeline → "
-            "kaggle_pipeline → gov_data_pipeline → nbp_pipeline"
-        )
-        st.dataframe(
-            pipeline.rename(
-                columns={"source": "Źródło", "row_count": "Liczba rekordów"}
-            ),
-            width="stretch",
-            hide_index=True,
-        )
+            dcol3, dcol4 = st.columns(2)
+            with dcol3:
+                st.markdown("#### Dim_Investment — aktywność deweloperska")
+                if not dim_stats["investment"].empty:
+                    st.dataframe(
+                        dim_stats["investment"],
+                        hide_index=True,
+                        width="stretch",
+                    )
+                st.caption("Unikalnych deweloperów i inwestycji per miasto (SCD2).")
+            with dcol4:
+                st.markdown("#### Dim_Flood_Risk + flood_zones")
+                if not dim_stats["flood_risk"].empty:
+                    st.dataframe(
+                        dim_stats["flood_risk"],
+                        hide_index=True,
+                        width="stretch",
+                    )
+                st.caption("Słownik 4-wierszowy + liczba poligonów MZP per scenariusz.")
+
+            st.markdown("#### Dim_Time — zakres danych")
+            tr = dim_stats.get("time_range", pd.DataFrame())
+            if not tr.empty:
+                tm1, tm2, tm3 = st.columns(3)
+                tm1.metric("Najstarszy wpis", str(tr["min_date"].iloc[0]))
+                tm2.metric("Najnowszy wpis", str(tr["max_date"].iloc[0]))
+                tm3.metric(
+                    "Zakres (lata)",
+                    f"{tr['min_year'].iloc[0]} – {tr['max_year'].iloc[0]}",
+                )
+
+        st.divider()
+
+    # ── Status ETL (tylko admin) ───────────────────────────────────────────────
+    if st.session_state.get("role") == "admin":
+        with st.expander("Status danych i pipeline ETL", expanded=False):
+            total = int(pipeline["row_count"].sum())  # type: ignore[arg-type]
+            st.metric(
+                "Łączna liczba rekordów w tabelach faktów i wymiarów",
+                f"{total:,}".replace(",", " "),
+            )
+            st.caption(
+                "Pipelines Airflow: mzp_pipeline → gus_bdl_pipeline → "
+                "kaggle_pipeline → gov_data_pipeline → nbp_pipeline"
+            )
+            st.dataframe(
+                pipeline.rename(
+                    columns={"source": "Źródło", "row_count": "Liczba rekordów"}
+                ),
+                width="stretch",
+                hide_index=True,
+            )
 
 
 if __name__ == "__main__":

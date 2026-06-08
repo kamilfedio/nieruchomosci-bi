@@ -22,6 +22,24 @@ class Config(BaseConfig):
         default="postgresql+psycopg2://airflow:airflow@localhost:5432/nieruchomosci",
         validation_alias=AliasChoices("DATABASE_URL"),
     )
+    analyst_database_url: str = Field(
+        default="postgresql+psycopg2://analyst_ro:analyst@localhost:5432/nieruchomosci",
+        validation_alias=AliasChoices("ANALYST_DATABASE_URL"),
+        description=(
+            "Read-only connection URL used by the Streamlit dashboard (analyst_ro role). "
+            "Falls back to DATABASE_URL if not set."
+        ),
+    )
+    admin_password_hash: str = Field(
+        default="8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",
+        validation_alias=AliasChoices("ADMIN_PASSWORD_HASH"),
+        description="SHA-256 hex digest of the admin dashboard password. Default: 'admin'.",
+    )
+    analyst_password_hash: str = Field(
+        default="f44ceb062e35dfeea6ed7f8524d53bb0bff19f553e25cae7ef4850e4185ccbba",
+        validation_alias=AliasChoices("ANALYST_PASSWORD_HASH"),
+        description="SHA-256 hex digest of the analyst dashboard password. Default: 'analyst'.",
+    )
     gemini_api_key: str = Field(
         default="",
         validation_alias=AliasChoices("GEMINI_API_KEY"),
