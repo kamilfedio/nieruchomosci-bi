@@ -175,9 +175,20 @@ def gov_data_pipeline():
 
         return GovDataLoader(source_path=Path(processed_path)).run()
 
+    @task
+    def validate(processed_path: str) -> dict:
+        from _inject_env import setup_task_env
+
+        setup_task_env()
+        from src.api.config import Config
+        from src.api.quality.checker import DQChecker
+
+        return DQChecker.source_summary("gov_data", Config().database_url)
+
     staged = stage.expand(item=scrape())
     processed = transform(staged)
     load(processed)  # type: ignore[arg-type]
+    validate(processed)  # type: ignore[arg-type]
 
 
 gov_data_pipeline()

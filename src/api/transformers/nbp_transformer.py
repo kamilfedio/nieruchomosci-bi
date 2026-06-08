@@ -93,9 +93,21 @@ class NBPTransformer(BaseTransformer):
         return prices.select(_KEEP_COLS).lazy()
 
     def run(self) -> Path:
+        from src.api.config import Config
+        from src.api.quality.checker import DQChecker
+        from src.api.quality.rules import nbp_rules
+
         logger.info("Starting NBP transformation from '{}'", self._source_path)
         lf = self.read()
         lf = self.transform(lf)
+
+        batch_id = self._source_path.stem.replace("_prices", "")
+        checker = DQChecker(
+            source=self.source_name, batch_id=batch_id, rules=nbp_rules()
+        )
+        lf, rejected = checker.check(lf)
+        checker.save_rejected(rejected, Config().database_url)
+
         df = lf.collect()
         logger.info("Transformation complete: {} rows", len(df))
         path = self.save(df)

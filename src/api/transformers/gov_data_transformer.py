@@ -198,8 +198,20 @@ class GovDataTransformer(BaseTransformer):
     # ── Transform pipeline ────────────────────────────────────────────────────
 
     def transform(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        from src.api.quality.checker import DQChecker
+        from src.api.quality.rules import gov_data_rules
+
         df = self._cast_types(df)
         df = self._normalize_prices(df)
+
+        checker = DQChecker(
+            source=self.source_name,
+            batch_id=self._source_path.name,
+            rules=gov_data_rules(),
+        )
+        df, rejected = checker.check(df)
+        checker.save_rejected(rejected, self._config.database_url)
+
         df = self._filter_valid(df)
         df = self._normalize(df)
         df = self._lag(df)

@@ -47,9 +47,20 @@ def gus_bdl_pipeline():
 
         return GUSBDLLoader(source_path=Path(processed_path)).run()
 
+    @task
+    def validate(processed_path: str) -> dict:
+        from _inject_env import setup_task_env
+
+        setup_task_env()
+        from src.api.config import Config
+        from src.api.quality.checker import DQChecker
+
+        return DQChecker.source_summary("gus_bdl", Config().database_url)
+
     raw = scrape()
     processed = transform(raw)  # type: ignore[arg-type]
     load(processed)  # type: ignore[arg-type]
+    validate(processed)  # type: ignore[arg-type]
 
 
 gus_bdl_pipeline()

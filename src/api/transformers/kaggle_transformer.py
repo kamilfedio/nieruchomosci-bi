@@ -48,7 +48,20 @@ class KaggleTransformer(BaseTransformer):
         return pl.scan_parquet(self._source_path)
 
     def transform(self, df: pl.LazyFrame) -> pl.LazyFrame:
+        from src.api.config import Config
+        from src.api.quality.checker import DQChecker
+        from src.api.quality.rules import kaggle_rules
+
         df = self._cast(df)
+
+        checker = DQChecker(
+            source=self.source_name,
+            batch_id=self._source_path.stem,
+            rules=kaggle_rules(),
+        )
+        df, rejected = checker.check(df)
+        checker.save_rejected(rejected, Config().database_url)
+
         df = self._filter_valid(df)
         df = self._normalize(df)
         df = self._computed(df)

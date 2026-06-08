@@ -157,6 +157,19 @@ class GUSBDLTransformer(BaseTransformer):
             wide["city"].n_unique(),
             wide["year"].n_unique(),
         )
+
+        from src.api.quality.checker import DQChecker
+        from src.api.quality.rules import gus_bdl_rules
+
+        checker = DQChecker(
+            source=self.source_name,
+            batch_id=Path(self._source_path).name,
+            rules=gus_bdl_rules(),
+        )
+        passed, rejected = checker.check(wide.lazy())
+        checker.save_rejected(rejected, config.database_url)
+        wide = passed.collect()
+
         return self._save(wide)
 
     def _save(self, df: pl.DataFrame) -> Path:
