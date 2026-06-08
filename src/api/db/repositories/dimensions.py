@@ -24,18 +24,27 @@ from .base import BaseRepository
 
 
 class DimTimeRepository(BaseRepository[DimTime]):
+    @staticmethod
+    def _to_dict(r: DimTime) -> dict:
+        return dict(
+            id=r.id,
+            date=r.date,
+            year=r.year,
+            quarter=r.quarter,
+            month=r.month,
+            week=r.week,
+            day=r.day,
+            day_of_week=r.day_of_week,
+            day_name=r.day_name,
+            month_name=r.month_name,
+            year_quarter=r.year_quarter,
+            is_weekend=r.is_weekend,
+        )
+
     def insert_or_ignore(self, record: DimTime) -> None:
         self._session.execute(
             insert(DimTime)
-            .values(
-                id=record.id,
-                date=record.date,
-                year=record.year,
-                quarter=record.quarter,
-                month=record.month,
-                day=record.day,
-                day_of_week=record.day_of_week,
-            )
+            .values(self._to_dict(record))
             .on_conflict_do_nothing(index_elements=["id"])
         )
 
@@ -44,20 +53,7 @@ class DimTimeRepository(BaseRepository[DimTime]):
             return 0
         result = self._session.execute(
             insert(DimTime)
-            .values(
-                [
-                    dict(
-                        id=r.id,
-                        date=r.date,
-                        year=r.year,
-                        quarter=r.quarter,
-                        month=r.month,
-                        day=r.day,
-                        day_of_week=r.day_of_week,
-                    )
-                    for r in records
-                ]
-            )
+            .values([self._to_dict(r) for r in records])
             .on_conflict_do_nothing(index_elements=["id"])
         )
         return result.rowcount
