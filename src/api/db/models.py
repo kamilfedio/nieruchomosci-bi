@@ -62,6 +62,26 @@ class ColumnMappingCache(MappedAsDataclass, Base):
     )
 
 
+class StagingRejectedRecord(MappedAsDataclass, Base):
+    """Rows rejected by DQ checks — written by DQChecker.save_rejected()."""
+
+    __tablename__ = "stg_rejected_records"
+
+    # Required fields first (no default)
+    source: Mapped[str] = mapped_column(String(64))
+    rule_name: Mapped[str] = mapped_column(String(128))
+    severity: Mapped[str] = mapped_column(String(16))
+    # Optional fields (have default)
+    batch_id: Mapped[str | None] = mapped_column(String(32), default=None)
+    rule_description: Mapped[str | None] = mapped_column(Text, default=None)
+    row_data: Mapped[dict | None] = mapped_column(JSONB, default=None)
+    # Server-managed (init=False)
+    id: Mapped[int] = mapped_column(primary_key=True, init=False)
+    rejected_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), init=False
+    )
+
+
 class GeocodingCache(MappedAsDataclass, Base):
     """Persistent cache of address → (lat, lon) from Google Maps Geocoding API."""
 
