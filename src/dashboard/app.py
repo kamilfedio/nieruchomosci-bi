@@ -1,4 +1,4 @@
-"""Streamlit dashboard — Mapa ryzyka i cen polskiego rynku mieszkaniowego."""
+"""Streamlit dashboard — Wielowymiarowa analiza polskiego rynku mieszkaniowego."""
 
 from __future__ import annotations
 
@@ -39,13 +39,14 @@ from src.dashboard.data import (
     load_demographics,
     load_developer_map_points,
     load_developer_summary,
+    load_dimension_stats,
     load_kpi_views,
     load_map_points,
     load_material_price_data,
+    load_migration_growth_data,
     load_mzp_from_db,
     load_nbp_benchmark,
     load_pipeline_stats,
-    load_dimension_stats,
     load_price_drops_detail,
     parse_period_label,
     period_bounds_from_data,
@@ -54,7 +55,7 @@ from src.dashboard.data import (
 )
 
 st.set_page_config(
-    page_title="Mapa ryzyka i cen — BI",
+    page_title="Analiza rynku nieruchomości — BI",
     page_icon="🏠",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -150,7 +151,7 @@ def _sync_period_filters(period_labels: list[str]) -> None:
 
 def _sidebar_filters(period_labels: list[str]) -> DashboardFilters:
     st.sidebar.title("Filtry")
-    st.sidebar.caption("Mapa ryzyka i cen polskiego rynku mieszkaniowego")
+    st.sidebar.caption("Wielowymiarowa analiza polskiego rynku mieszkaniowego")
 
     if st.sidebar.button("Zresetuj filtry"):
         for key in list(st.session_state.keys()):
@@ -282,11 +283,15 @@ def _render_map_section(
     kpi_data: dict,
     flt: DashboardFilters,
     config: Config,
-) -> str | None:
-    """Render interactive map. Returns clicked district name or None."""
-    st.subheader("Mapa cen i ryzyka powodziowego")
+) -> None:
+    st.markdown("#### Interaktywna mapa cen i stref powodziowych")
+    st.caption(
+        "Warstwa 1 (kolory): poligony MZP (Wody Polskie) — strefy zagrożenia powodzią. "
+        "Warstwa 2 (punkty): ogłoszenia Kaggle — kolor od zielonego (tanie) do czerwonego (drogie). "
+        "Warstwa 3 (bąbelki): wybrany KPI zagregowany per miasto. "
+        "Warstwa 4 (kwadraty): inwestycje deweloperskie z rejestru dane.gov.pl."
+    )
 
-    # Controls row
     ctrl1, ctrl2, ctrl3 = st.columns([2, 2, 1])
     with ctrl1:
         kpi_label = st.selectbox(
@@ -310,7 +315,6 @@ def _render_map_section(
             key="map_pts",
         )
 
-    # Load data — simplified polygons from PostGIS (~few MB vs 384 MB flat file)
     geojson = load_mzp_from_db(config.analyst_database_url)
     points_df = load_map_points(
         config.analyst_database_url,
@@ -324,19 +328,10 @@ def _render_map_section(
     )
     city_kpi_df = build_city_kpi(kpi_data, MAP_KPI_OPTIONS[kpi_label], flt)
 
-    # Render map — on_select="ignore" prevents zoom/pan from triggering full reruns
     fig = charts.map_chart(
         points_df, city_kpi_df, geojson, active_scenarios, kpi_label, dev_df
     )
     st.plotly_chart(fig, width="stretch", on_select="ignore", key="map_chart")
-
-    st.caption(
-        "Warstwa 1: poligony MZP (Wody Polskie) · "
-        "Warstwa 2: ogłoszenia Kaggle (kolor = cena/m²) · "
-        "Warstwa 3: KPI per miasto (rozmiar = liczba ofert) · "
-        "Warstwa 4: inwestycje deweloperskie dane.gov.pl (kwadraty)."
-    )
-    return None
 
 
 def main() -> None:
@@ -352,7 +347,30 @@ def main() -> None:
         st.session_state["role"] = None
         st.rerun()
 
-    st.title("Mapa ryzyka i cen polskiego rynku mieszkaniowego")
+    st.title("Wielowymiarowa analiza polskiego rynku mieszkaniowego")
+    st.caption(
+        "System BI analizuje ceny ofertowe i transakcyjne, ryzyko powodziowe, dostępność mieszkaniową "
+        "oraz aktywność deweloperską w 15 największych miastach Polski. "
+        "Źródła: ogłoszenia Kaggle (266k+) · dane.gov.pl · NBP BaRN · GUS BDL · Wody Polskie MZP."
+    )
+    st.info("**Odbiorca:** Dyrektor ds. Inwestycji", icon="👤")
+    st.caption(
+        "**Scenariusz użycia:** Dyrektor ds. Inwestycji poszukuje optymalnej lokalizacji pod nowy projekt "
+        "deweloperski. Priorytetem jest **bezpieczna inwestycja pod względem ryzyka powodziowego** — "
+        "wybierane są wyłącznie miasta, w których znikomy odsetek ofert leży w strefach zagrożenia, "
+        "co chroni wartość portfela nieruchomości i minimalizuje ryzyko strat w przypadku podtopień. "
+        "Analiza obejmuje identyfikację miast o wysokim popycie mieszkaniowym — "
+        "rosnące ceny transakcyjne, niski czas ekspozycji ofert, korzystne saldo migracji oraz "
+        "ograniczone ryzyko powodziowe — tak aby wybudowane lokale cieszyły się realnym zainteresowaniem "
+        "nabywców i zapewniały zwrot z inwestycji. "
+        "Docelową grupą nabywców są mieszkańcy danego miasta — osoby poszukujące lokalu na własne potrzeby, "
+        "a nie inwestorzy zewnętrzni czy migranci — co oznacza priorytet dla rynków z ugruntowaną "
+        "lokalną siłą nabywczą i rosnącym popytem wewnętrznym. "
+        "Lokalizacje z wysokim udziałem ofert w strefach zagrożenia powodziowego są wykluczane, "
+        "ponieważ świadomi lokalnych warunków nabywcy unikają takich nieruchomości, "
+        "co bezpośrednio obniża płynność sprzedaży i osiągalne ceny."
+    )
+
     try:
         with st.spinner("Ładowanie danych z hurtowni..."):
             kpi_data = load_kpi_views(config.analyst_database_url)
@@ -378,9 +396,8 @@ def main() -> None:
     flt = _sidebar_filters(period_labels)
 
     st.caption(
-        "Ceny ofertowe (Kaggle / deweloperzy) vs ceny transakcyjne (NBP BaRN) · "
         f"Dostępne dane: {bounds[0][0]} Q{bounds[0][1]} – {bounds[1][0]} Q{bounds[1][1]} · "
-        f"Filtr: {flt.period_start[0]} Q{flt.period_start[1]} – "
+        f"Aktywny filtr: {flt.period_start[0]} Q{flt.period_start[1]} – "
         f"{flt.period_end[0]} Q{flt.period_end[1]}"
     )
 
@@ -399,10 +416,12 @@ def main() -> None:
             "lub zmień miasta / typ rynku."
         )
 
-    st.markdown("### Kluczowe wskaźniki")
+    # ── SEKCJA 1: Kluczowe wskaźniki ─────────────────────────────────────────
+    st.markdown("### Kluczowe wskaźniki rynku")
     st.caption(
-        "Delty w stosunku do poprzedniego kwartału. "
-        "Źródła: ogłoszenia Kaggle (195k+) · deweloperzy dane.gov.pl · NBP BaRN · GUS BDL."
+        "Wartości zagregowane dla wybranego okresu i filtrów. "
+        "Delty (strzałki) pokazują zmianę względem poprzedniego kwartału. "
+        "Czerwona strzałka przy 'Odchyleniu od NBP' i 'Dostępności' oznacza pogorszenie sytuacji nabywców."
     )
     if metrics.price_kind == "rent":
         st.warning(
@@ -418,7 +437,8 @@ def main() -> None:
 
     st.divider()
 
-    # ── Mapa + rankingi boczne ────────────────────────────────────────────────
+    # ── SEKCJA 2: Mapa + Ranking miast ───────────────────────────────────────
+    st.markdown("### Mapa i ranking miast")
     map_col, side_col = st.columns([0.65, 0.35])
     with map_col:
         try:
@@ -427,48 +447,191 @@ def main() -> None:
             st.error(f"Błąd renderowania mapy: {exc}")
             st.caption("Sprawdź logi serwera po szczegóły.")
     with side_col:
-        st.plotly_chart(charts.ranking_chart(rank_df), width="stretch")
+        st.markdown("#### Ranking miast — śr. cena ofertowa / m²")
         st.caption(
-            "Średnia cena ofertowa/m² z ogłoszeń Kaggle per miasto "
-            "w wybranym przedziale czasowym."
+            "Średnia cena ofertowa za m² z ogłoszeń Kaggle per miasto, w wybranym przedziale "
+            "czasowym i filtrach. Pozwala szybko porównać poziom cen między rynkami."
         )
+        st.plotly_chart(charts.ranking_chart(rank_df), width="stretch")
+
+    st.divider()
+
+    # ── SEKCJA 3: Ceny i trendy (OLAP 1) ────────────────────────────────────
+    st.markdown("### Trendy cenowe — oferty vs transakcje (OLAP 1)")
+    st.caption(
+        "**Pytanie:** Jaka jest procentowa różnica między średnią ceną ofertową (Kaggle) "
+        "a ceną transakcyjną (NBP BaRN) per miasto i kwartał? "
+        "Identyfikuje miasta o największym przewartościowaniu rynku."
+    )
+    st.plotly_chart(charts.trend_chart(trend_df), width="stretch")
+    st.caption(
+        "**Linia niebieska** = średnia cena ofertowa (Kaggle, ogłoszenia kupna). "
+        "**Linia pomarańczowa przerywana** = średnia cena transakcyjna z aktów notarialnych (NBP BaRN, rynek pierwotny). "
+        "**Odchylenie** (prawa oś, szara linia) = o ile % oferty są droższe od faktycznych transakcji — "
+        "wskaźnik 'przegrzania' rynku. Wartość +20% oznacza, że sprzedający żądają o 20% więcej niż rynek płaci."
+    )
+
+    st.divider()
+
+    # ── SEKCJA 4: Ryzyko powodziowe (OLAP 2, 5) ──────────────────────────────
+    st.markdown("### Ryzyko powodziowe a ceny mieszkań (OLAP 2, 5)")
+    st.caption(
+        "**OLAP 2:** Czy i o ile % mieszkania w strefach najwyższego zagrożenia powodziowego "
+        "są tańsze od lokali w bezpiecznych rejonach tej samej dzielnicy? "
+        "**OLAP 5:** Liczba i wartość ofert z rynku pierwotnego narażonych na ryzyko powodzi."
+    )
+    flood_col1, flood_col2 = st.columns(2)
+    with flood_col1:
+        st.markdown("#### Dyskonto / premia powodziowa per scenariusz (OLAP 2, KPI 5)")
         st.plotly_chart(charts.flood_premium_chart(views["kpi05"]), width="stretch")
         st.caption(
-            "Różnica ceny/m² między ofertami w strefie ryzyka MZP "
-            "a ofertami poza strefą w tym samym mieście. "
-            "Wartość dodatnia = premia, ujemna = dyskonto."
+            "Różnica między średnią ceną/m² ofert w strefie ryzyka MZP "
+            "a ofertami w bezpiecznych lokalizacjach **tej samej dzielnicy**. "
+            "**Wartość ujemna** (dyskonto) = oferty w strefie są tańsze — szansa negocjacyjna dla kupujących. "
+            "**Wartość dodatnia** (premia) = strefa ryzykowna paradoksalnie droższa (np. atrakcyjna lokalizacja). "
+            "Q10% = powódź raz na 10 lat, Q1% = raz na 100 lat, Q0,2% = ekstremalna."
         )
+    with flood_col2:
+        st.markdown("#### Oferty w strefach zagrożenia powodziowego per miasto (OLAP 5, KPI 4)")
         st.plotly_chart(charts.flood_risk_chart(views["kpi04"]), width="stretch")
         st.caption(
-            "Liczba ogłoszeń Kaggle zlokalizowanych w poligonach MZP "
-            "(Mapy Zagrożenia Powodziowego, Wody Polskie). "
-            "Q10% = raz na 10 lat, Q1% = raz na 100 lat, Q0,2% = ekstremalne."
+            "Liczba ogłoszeń Kaggle zlokalizowanych w poligonach MZP (Mapy Zagrożenia Powodziowego, Wody Polskie) "
+            "per miasto i scenariusz. "
+            "Dane obejmują wszystkie typy rynku (pierwotny + wtórny). "
+            "Filtr 'Scenariusz ryzyka powodziowego' w panelu bocznym ogranicza widoczne strefy."
         )
 
     st.divider()
 
-    # ── Trendy cenowe ─────────────────────────────────────────────────────────
-    trend_col, dev_col = st.columns(2)
-    with trend_col:
-        st.markdown("#### Trendy cenowe i odchylenie od NBP")
+    # ── SEKCJA 5: Dostępność i demografia (OLAP 3, 7) ────────────────────────
+    st.markdown("### Dostępność mieszkaniowa i demografia (OLAP 3, 7)")
+    st.caption(
+        "**OLAP 3:** Ile miesięcy przeciętnego wynagrodzenia brutto potrzeba na zakup 1 m²? "
+        "**OLAP 7:** Jak saldo migracji netto koreluje ze wzrostem cen — gdzie rośnie presja popytowa?"
+    )
+    dem_col1, dem_col2, dem_col3 = st.columns(3)
+    with dem_col1:
+        st.markdown("#### Miesięcy pracy na 1 m² (OLAP 3, KPI 3)")
+        st.plotly_chart(charts.affordability_chart(views["kpi03"]), width="stretch")
         st.caption(
-            "Ogłoszenia Kaggle (ceny ofertowe) zestawione z cenami transakcyjnymi "
-            "NBP BaRN. Odchylenie dodatnie oznacza, że oferty są droższe od "
-            "faktycznie zawieranych transakcji."
+            "Wskaźnik dostępności mieszkaniowej: śr. cena/m² podzielona przez śr. wynagrodzenie brutto (GUS BDL). "
+            "Im **niższa wartość**, tym bardziej dostępny rynek. "
+            "Kolory: zielony ≤ 1,2 mies., pomarańczowy 1,2–1,6 mies., czerwony > 1,6 mies. "
+            "Przerywana linia = mediana dla wybranych miast. "
+            "Wynagrodzenia GUS mogą dotyczyć poprzedniego roku (dane roczne)."
         )
-        st.plotly_chart(charts.trend_chart(trend_df), width="stretch")
-        st.plotly_chart(charts.offer_vs_nbp_chart(views["kpi02"]), width="stretch")
+    with dem_col2:
+        st.markdown("#### Wynagrodzenie vs cena/m² per miasto (KPI 3)")
+        st.plotly_chart(charts.salary_vs_price_scatter(views["kpi03"]), width="stretch")
         st.caption(
-            "Źródło cen ofertowych: Kaggle Apartment Prices in Poland. "
-            "Źródło cen transakcyjnych: NBP BaRN (Baza Rynku Nieruchomości)."
+            "Każda bańka = jedno miasto. Oś X = śr. wynagrodzenie brutto (GUS BDL), "
+            "oś Y = śr. cena ofertowa/m² (Kaggle). "
+            "Rozmiar bańki = liczba ofert. "
+            "Miasta wysoko ponad linią trendu mają ceny nieproporcjonalnie wysokie względem zarobków."
+        )
+    with dem_col3:
+        st.markdown("#### Saldo migracji vs wzrost cen r/r (OLAP 7)")
+        migration_df = load_migration_growth_data(
+            config.analyst_database_url, tuple(flt.cities)
+        )
+        st.plotly_chart(charts.migration_price_scatter(migration_df), width="stretch")
+        st.caption(
+            "Oś X = śr. saldo migracji netto (napływ minus odpływ mieszkańców, GUS BDL). "
+            "Oś Y = śr. roczny wzrost cen ofertowych (YoY %). "
+            "**Prawy górny kwadrant** (migracja dodatnia + wzrost cen) = rynki wschodzące pod presją popytu. "
+            "Rozmiar bańki = populacja miasta."
         )
 
-    with dev_col:
-        st.markdown("#### Panel deweloperski — dane.gov.pl")
+    st.divider()
+
+    # ── SEKCJA 6: Struktura rynku (OLAP 9, OLAP 1 YoY) ──────────────────────
+    st.markdown("### Struktura rynku i dynamika cen (OLAP 9, OLAP 1)")
+    st.caption(
+        "**OLAP 9:** Jaki jest udział rynku pierwotnego w ofertach i jak zmienia się "
+        "przeciętna oferowana powierzchnia w segmencie pierwotnym vs wtórnym? "
+        "**OLAP 1 (YoY):** Jak dynamika wzrostu cen różni się między miastami rok do roku?"
+    )
+    struct_col1, struct_col2, struct_col3 = st.columns(3)
+    with struct_col1:
+        st.markdown("#### Udział rynku pierwotnego w ofertach (OLAP 9, KPI 9)")
+        st.plotly_chart(charts.primary_share_chart(views["kpi09"]), width="stretch")
         st.caption(
-            "Dane z rejestru cen lokali deweloperskich (ustawa o jawności cen). "
-            "Obejmuje tylko deweloperów, którzy opublikowali pliki CSV/XLSX."
+            "Procentowy udział ogłoszeń z rynku pierwotnego (nowe budownictwo) "
+            "w całkowitej liczbie ofert Kaggle per miasto (pierwotny + wtórny). "
+            "Wysoki udział = miasto zdominowane przez deweloperów i nowe inwestycje."
         )
+    with struct_col2:
+        st.markdown("#### Średnia powierzchnia: pierwotny vs wtórny (OLAP 9)")
+        st.plotly_chart(charts.area_by_market_chart(views["listings"]), width="stretch")
+        st.caption(
+            "Porównanie średniej oferowanej powierzchni (m²) per segment rynku i kwartał. "
+            "Jeśli rynek pierwotny wykazuje trend malejący, deweloperzy budują coraz mniejsze lokale "
+            "— efekt rosnących cen/m² i ograniczonej zdolności kredytowej kupujących."
+        )
+    with struct_col3:
+        kpi01_raw = kpi_data.get("vw_kpi_01_avg_offer_price_m2", pd.DataFrame())
+        kpi01_flt = kpi01_raw if kpi01_raw is not None else pd.DataFrame()
+        if not kpi01_flt.empty and flt.cities:
+            kpi01_flt = filter_cities(kpi01_flt, "city", flt.cities)
+        st.markdown("#### Wzrost cen rok do roku per miasto (OLAP 1, KPI 1)")
+        st.plotly_chart(charts.yoy_growth_chart(kpi01_flt), width="stretch")
+        st.caption(
+            "Procentowa zmiana średniej ceny ofertowej/m² rok do roku (YoY) per miasto. "
+            "Słupki powyżej 0% = wzrost cen w danym roku. "
+            "Pozwala porównać, które rynki rosły szybciej i czy dynamika zwalnia."
+        )
+
+    st.divider()
+
+    # ── SEKCJA 7: Cechy lokali i udogodnienia (OLAP 10) ──────────────────────
+    st.markdown("### Cechy lokali — premia i rozkład cen (OLAP 10)")
+    st.caption(
+        "**OLAP 10:** O ile średnio droższy jest lokal z balkonem, windą lub miejscem parkingowym "
+        "w porównaniu do podobnych lokali bez tych udogodnień? "
+        "Dane pomocnicze dla flipperów i doradców klientów."
+    )
+    feat_col1, feat_col2, feat_col3 = st.columns(3)
+    with feat_col1:
+        st.markdown("#### Premia za udogodnienia (OLAP 10, KPI 10)")
+        st.plotly_chart(charts.amenity_premium_chart(views["kpi10"]), width="stretch")
+        st.caption(
+            "Różnica średniej ceny/m² między lokalami **z** danym udogodnieniem "
+            "a lokalami **bez** niego (kontrolowana per miasto i liczba pokoi). "
+            "Premia wyrażona w %. "
+            "Klimatyzacja niedostępna w zbiorze Kaggle — brak w danych źródłowych."
+        )
+    with feat_col2:
+        st.markdown("#### Rozkład cen/m² wg liczby pokoi")
+        st.plotly_chart(charts.rooms_price_chart(views["listings"]), width="stretch")
+        st.caption(
+            "Box plot cen ofertowych/m² per liczba pokoi (mediana + kwartyle, bez wartości odstających). "
+            "Kawalerki i małe mieszkania często droższe/m² ze względu na lokalizację i standard. "
+            "Szersze pudełko = większe zróżnicowanie cen w tej kategorii."
+        )
+    with feat_col3:
+        mat_flt = material_df if not material_df.empty else pd.DataFrame()
+        if not mat_flt.empty and flt.cities:
+            mat_flt = filter_cities(mat_flt, "city", flt.cities)
+        st.markdown("#### Śr. cena/m² wg materiału budowlanego")
+        st.plotly_chart(charts.material_price_chart(mat_flt), width="stretch")
+        st.caption(
+            "Średnia cena ofertowa/m² per materiał budowlany (Kaggle). "
+            "Dane pomocnicze przy wycenie remontów i ocenie standardu budynku. "
+            "Obejmuje tylko materiały z co najmniej 5 ogłoszeniami w wybranym filtrze."
+        )
+
+    st.divider()
+
+    # ── SEKCJA 8: Panel deweloperski (OLAP 4, 8) ─────────────────────────────
+    st.markdown("### Panel deweloperski — dane.gov.pl (OLAP 4, 8)")
+    st.caption(
+        "**OLAP 4:** Jak zmienia się liczba i wartość lokali przechodzących ze statusu "
+        "'dostępny' na 'zarezerwowany'/'sprzedany' w kolejnych tygodniach? "
+        "**OLAP 8:** Gdzie i jak często deweloperzy obniżają ceny dostępnych lokali? "
+        "Dane wyłącznie z rejestru deweloperów, którzy opublikowali pliki CSV/XLSX w rejestrze dane.gov.pl."
+    )
+    dev_col1, dev_col2 = st.columns(2)
+    with dev_col1:
         sold_value = (
             views["kpi07"]["total_value_pln"].sum()
             if not views["kpi07"].empty
@@ -477,19 +640,25 @@ def main() -> None:
         st.metric(
             "Łączna wartość sprzedanych / zarezerwowanych lokali (KPI 7)",
             format_pln(sold_value),
-            help="SUM(cena_calkowita) dla lokali ze statusem sprzedany lub zarezerwowany.",
+            help=(
+                "Suma cen lokali deweloperskich, które przeszły na status sprzedany lub zarezerwowany "
+                "w wybranym okresie i miastach. Źródło: Fact_Change z rejestru dane.gov.pl."
+            ),
         )
-
+        st.markdown("#### Tygodniowe tempo sprzedaży (OLAP 4, KPI 6)")
         st.plotly_chart(charts.sales_velocity_chart(views["kpi06"]), width="stretch")
         st.caption(
-            "Liczba lokali deweloperskich z tygodniową zmianą statusu "
-            "na zarezerwowany lub sprzedany. Wymaga załadowania plików "
-            "ze starszym formatem dane.gov.pl (ze statusem dostępności)."
+            "Liczba lokali deweloperskich ze zmianą statusu na **zarezerwowany** lub **sprzedany** "
+            "per tydzień (dane.gov.pl). "
+            "Nagły wzrost = ożywienie popytu lub otwarcie nowej inwestycji. "
+            "Spadek przez kilka tygodni = sygnał słabnącego popytu."
         )
-
-        st.markdown("**Obniżki cen lokali deweloperskich (KPI 8)**")
+    with dev_col2:
+        st.markdown("#### Obniżki cen lokali deweloperskich (OLAP 8, KPI 8)")
         st.caption(
-            "Zdarzenia, w których cena lokalu spadła w stosunku do poprzedniego snapshota."
+            "Zdarzenia, w których cena konkretnego lokalu **spadła** w stosunku do poprzedniego "
+            "snapshota (dane.gov.pl). Częste obniżki w tym samym mieście = sygnał problemu ze sprzedażą. "
+            "Tabela pokazuje 50 największych obniżek dla wybranego okresu i miast."
         )
         if drops_df.empty:
             st.info("Brak obniżek cen dla wybranych filtrów.")
@@ -515,96 +684,20 @@ def main() -> None:
             )
             st.dataframe(display, width="stretch", hide_index=True)
 
-    st.divider()
-
-    # ── Dostępność, struktura rynku, udogodnienia ─────────────────────────────
-    aff_col, share_col, amen_col = st.columns(3)
-    with aff_col:
-        st.plotly_chart(charts.affordability_chart(views["kpi03"]), width="stretch")
-        st.caption(
-            "Ile miesięcy wynagrodzenia brutto (GUS BDL) kosztuje 1 m² mieszkania "
-            "per miasto. Im niższa wartość, tym większa dostępność. "
-            "Wynagrodzenia GUS mogą pochodzić z roku poprzedniego (dane roczne)."
-        )
-    with share_col:
-        st.plotly_chart(charts.primary_share_chart(views["kpi09"]), width="stretch")
-        st.caption(
-            "Udział ogłoszeń z rynku pierwotnego (nowe budownictwo) "
-            "w całkowitej liczbie ofert Kaggle per miasto. "
-            "Rynek pierwotny = apartamentBuilding."
-        )
-    with amen_col:
-        st.plotly_chart(charts.amenity_premium_chart(views["kpi10"]), width="stretch")
-        st.caption(
-            "Różnica średniej ceny/m² między lokalami posiadającymi "
-            "dane udogodnienie a lokalami bez niego (kontrolowana per miasto i pokoje). "
-            "Klimatyzacja niedostępna w zbiorze Kaggle."
-        )
-
-    st.divider()
-
-    # ── Analiza pogłębiona ────────────────────────────────────────────────────
-    st.markdown("### Analiza rynku — wykresy pogłębione")
-    st.caption(
-        "Rozkłady, korelacje i rankingi wykraczające poza podstawowe KPI. "
-        "Filtry miasta i okresu są aktywne."
-    )
-
-    adv_col1, adv_col2 = st.columns(2)
-    with adv_col1:
-        st.plotly_chart(charts.rooms_price_chart(views["listings"]), width="stretch")
-        st.caption(
-            "Rozkład cen ofertowych/m² (mediana + kwartyle) per liczba pokoi. "
-            "Mniejsze mieszkania często osiągają wyższą cenę/m² ze względu na lokalizację i standard."
-        )
-    with adv_col2:
-        kpi01_raw = kpi_data.get("vw_kpi_01_avg_offer_price_m2", pd.DataFrame())
-        kpi01_flt = kpi01_raw if kpi01_raw is not None else pd.DataFrame()
-        if not kpi01_flt.empty and flt.cities:
-            kpi01_flt = filter_cities(kpi01_flt, "city", flt.cities)
-        st.plotly_chart(charts.yoy_growth_chart(kpi01_flt), width="stretch")
-        st.caption(
-            "Procentowa zmiana średniej ceny ofertowej/m² rok do roku per miasto. "
-            "Umożliwia porównanie dynamiki wzrostu cen między rynkami."
-        )
-
-    adv_col3, adv_col4 = st.columns(2)
-    with adv_col3:
-        st.plotly_chart(charts.salary_vs_price_scatter(views["kpi03"]), width="stretch")
-        st.caption(
-            "Zależność między średnim wynagrodzeniem brutto (GUS BDL) "
-            "a średnią ceną/m² per miasto. "
-            "Miasta powyżej linii trendu mają relatywnie droższe mieszkania."
-        )
-    with adv_col4:
-        st.plotly_chart(charts.area_price_chart(views["listings"]), width="stretch")
-        st.caption(
-            "Średnia cena/m² w zależności od przedziału powierzchni mieszkania. "
-            "Efekt skali: większe lokale zwykle tańsze per m²."
-        )
-
-    adv_col5, adv_col6 = st.columns(2)
-    with adv_col5:
-        mat_flt = material_df if not material_df.empty else pd.DataFrame()
-        if not mat_flt.empty and flt.cities:
-            mat_flt = filter_cities(mat_flt, "city", flt.cities)
-        st.plotly_chart(charts.material_price_chart(mat_flt), width="stretch")
-        st.caption(
-            "Średnia cena ofertowa/m² wg materiału budowlanego (dane Kaggle). "
-            "Cegła i beton komórkowy dominują w starszych zasobach."
-        )
-    with adv_col6:
+        st.markdown("#### TOP 15 deweloperów wg wartości lokali")
         st.plotly_chart(charts.developer_ranking_chart(dev_summary_df), width="stretch")
         st.caption(
-            "TOP 15 deweloperów wg łącznej wartości lokali (sprzedanych/zarezerwowanych) "
-            "z rejestru dane.gov.pl. Rozmiar = suma cen lokali."
+            "Ranking deweloperów z rejestru dane.gov.pl według łącznej wartości "
+            "sprzedanych i zarezerwowanych lokali. "
+            "Rozmiar słupka = suma cen lokali (mln PLN). "
+            "Obejmuje wyłącznie deweloperów z opublikowanymi plikami z historią statusów."
         )
 
     st.divider()
 
-    # ── Statystyki tabel wymiarów (tylko admin) ───────────────────────────────
+    # ── SEKCJA 9: Statystyki wymiarów (tylko admin) ───────────────────────────
     if st.session_state.get("role") == "admin":
-        with st.expander("Statystyki tabel wymiarów", expanded=False):
+        with st.expander("Statystyki tabel wymiarów (admin)", expanded=False):
             dim_stats = load_dimension_stats(config.analyst_database_url)
 
             st.markdown("#### Dim_Geo_Location — zasięg geograficzny")
@@ -667,17 +760,17 @@ def main() -> None:
 
         st.divider()
 
-    # ── Status ETL (tylko admin) ───────────────────────────────────────────────
+    # ── SEKCJA 10: Status ETL (tylko admin) ───────────────────────────────────
     if st.session_state.get("role") == "admin":
-        with st.expander("Status danych i pipeline ETL", expanded=False):
+        with st.expander("Status danych i pipeline ETL (admin)", expanded=False):
             total = int(pipeline["row_count"].sum())  # type: ignore[arg-type]
             st.metric(
                 "Łączna liczba rekordów w tabelach faktów i wymiarów",
                 f"{total:,}".replace(",", " "),
             )
             st.caption(
-                "Pipelines Airflow: mzp_pipeline → gus_bdl_pipeline → "
-                "kaggle_pipeline → gov_data_pipeline → nbp_pipeline"
+                "Kolejność uruchamiania pipeline'ów: "
+                "mzp_pipeline → gus_bdl_pipeline → kaggle_pipeline → gov_data_pipeline → nbp_pipeline"
             )
             st.dataframe(
                 pipeline.rename(

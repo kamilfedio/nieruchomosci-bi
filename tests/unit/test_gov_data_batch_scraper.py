@@ -6,8 +6,8 @@ from unittest.mock import ANY, MagicMock, patch
 from src.api.config import Config
 from src.api.scrapers.gov_data_batch import (
     GovDataBatchScraper,
-    _PendingRecord,
     _output_stem_from_url,
+    _PendingRecord,
 )
 
 

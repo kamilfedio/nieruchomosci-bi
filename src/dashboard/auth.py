@@ -6,7 +6,6 @@ import hashlib
 import secrets
 
 import streamlit as st
-
 from src.api.config import Config
 
 

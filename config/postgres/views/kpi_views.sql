@@ -105,19 +105,22 @@ GROUP BY d.city, d.year;
 
 
 -- KPI 4: Liczba ofert w strefie ryzyka powodziowego (Q10 / Q1 / Q0,2)
+-- market_code dodany dla OLAP 5 (filtrowanie per rynek pierwotny)
 CREATE OR REPLACE VIEW vw_kpi_04_flood_risk_listings AS
 SELECT
     g.city,
     g.district,
     fr.scenario,
     fr.risk_class,
+    mt.market_code,
     COUNT(*) AS listing_count,
     AVG(fl.price_per_m2_pln) AS avg_price_m2_pln
 FROM "Fact_Listing" fl
 JOIN "Dim_Geo_Location" g ON fl.fk_geo_location = g.id
 JOIN "Dim_Flood_Risk" fr ON fl.fk_flood_risk = fr.id
+JOIN "Dim_Market_Type" mt ON fl.fk_market_type = mt.id
 WHERE fr.scenario IN ('Q10%', 'Q1%', 'Q0.2%')
-GROUP BY g.city, g.district, fr.scenario, fr.risk_class;
+GROUP BY g.city, g.district, fr.scenario, fr.risk_class, mt.market_code;
 
 
 -- KPI 5: Dyskonto / premia powodziowa (%)

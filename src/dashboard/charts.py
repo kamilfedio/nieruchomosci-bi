@@ -209,38 +209,109 @@ def sales_velocity_chart(df: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def offer_vs_nbp_chart(df: pd.DataFrame) -> go.Figure:
-    """KPI 2 — odchylenie cen ofertowych (Kaggle) od transakcyjnych NBP."""
-    if df.empty:
-        return _empty_figure("Odchylenie od cen transakcyjnych NBP (KPI 2)")
+def migration_price_scatter(df: pd.DataFrame) -> go.Figure:
+    """OLAP 7 — saldo migracji netto vs dynamika wzrostu cen YoY per miasto."""
+    if df.empty or "avg_migration" not in df.columns:
+        return _empty_figure("Saldo migracji vs wzrost cen YoY (OLAP 7)")
 
-    agg = df.groupby(["year", "quarter"], as_index=False).agg(
-        deviation=("deviation_from_transaction_pct", "mean")
+    valid = df.dropna(subset=["avg_migration", "avg_yoy_pct"])
+    if valid.empty:
+        return _empty_figure("Saldo migracji vs wzrost cen YoY (OLAP 7)")
+
+    max_pop = float(valid["population"].max()) if "population" in valid.columns else 1.0
+    sizes = valid["population"].apply(
+        lambda x: 14 + 28 * float(x) / (max_pop or 1.0)
+        if pd.notna(x)
+        else 14
+    )
+
+    fig = go.Figure(
+        go.Scatter(
+            x=valid["avg_migration"],
+            y=valid["avg_yoy_pct"],
+            mode="markers+text",
+            text=valid["city"].str.title(),
+            textposition="top center",
+            textfont=dict(size=11),
+            marker=dict(
+                size=sizes,
+                color=COLORS["price"],
+                opacity=0.8,
+                line=dict(width=1, color="#fff"),
+            ),
+            customdata=valid[["avg_migration", "avg_yoy_pct", "population"]].values,
+            hovertemplate=(
+                "<b>%{text}</b><br>"
+                "Saldo migracji: <b>%{customdata[0]:+,.0f}</b><br>"
+                "Wzrost cen r/r: <b>%{customdata[1]:+.1f}%</b><br>"
+                "Populacja: %{customdata[2]:,.0f}"
+                "<extra></extra>"
+            ),
+        )
+    )
+    fig.add_hline(y=0, line_dash="dot", line_color="#888", annotation_text="0% wzrost")
+    fig.add_vline(x=0, line_dash="dot", line_color="#888", annotation_text="Saldo 0")
+    fig.update_layout(
+        **_base_layout(
+            title="Saldo migracji netto vs wzrost cen ofertowych r/r (OLAP 7)",
+            xaxis_title="Śr. saldo migracji netto (osoby/rok, GUS BDL)",
+            yaxis_title="Śr. wzrost cen ofertowych r/r (%)",
+            height=440,
+        )
+    )
+    return fig
+
+
+def area_by_market_chart(df: pd.DataFrame) -> go.Figure:
+    """OLAP 9 — średnia powierzchnia mieszkania per segment rynku i kwartał."""
+    if df.empty or "area_m2" not in df.columns or "market_code" not in df.columns:
+        return _empty_figure("Średnia powierzchnia per segment rynku (OLAP 9)")
+
+    valid = df.dropna(subset=["area_m2", "market_code", "year", "quarter"])
+    valid = valid[valid["area_m2"].between(15, 300)]
+    if valid.empty:
+        return _empty_figure("Średnia powierzchnia per segment rynku (OLAP 9)")
+
+    agg = valid.groupby(["year", "quarter", "market_code"], as_index=False).agg(
+        avg_area=("area_m2", "mean"),
+        count=("area_m2", "count"),
     )
     agg["period"] = agg.apply(
         lambda r: f"{int(r['year'])} Q{int(r['quarter'])}", axis=1
     )
 
-    colors = [
-        COLORS["flood_moderate"] if v >= 0 else COLORS["affordability"]
-        for v in agg["deviation"]
-    ]
-    fig = go.Figure(
-        go.Bar(
-            x=agg["period"],
-            y=agg["deviation"],
-            marker_color=colors,
-            text=[f"{v:+.1f}%" for v in agg["deviation"]],
-            textposition="outside",
-            hovertemplate="%{x}<br>Odchylenie: <b>%{y:+.1f}%</b><extra></extra>",
+    market_labels = {"primary": "Rynek pierwotny", "secondary": "Rynek wtórny"}
+    market_colors = {"primary": COLORS["price"], "secondary": COLORS["nbp"]}
+
+    fig = go.Figure()
+    for code in ["primary", "secondary"]:
+        sub = agg[agg["market_code"] == code].sort_values(["year", "quarter"])
+        if sub.empty:
+            continue
+        fig.add_trace(
+            go.Bar(
+                x=sub["period"],
+                y=sub["avg_area"],
+                name=market_labels.get(code, code),
+                marker_color=market_colors.get(code, "#888"),
+                customdata=sub["count"].values,
+                hovertemplate=(
+                    f"<b>{market_labels.get(code, code)}</b><br>"
+                    "%{x}<br>"
+                    "Śr. powierzchnia: <b>%{y:.1f} m²</b><br>"
+                    "Oferty: %{customdata:,d}"
+                    "<extra></extra>"
+                ),
+            )
         )
-    )
-    fig.add_hline(y=0, line_dash="dot", line_color=COLORS["nbp"])
     fig.update_layout(
         **_base_layout(
-            title="Odchylenie cen ofertowych od transakcyjnych NBP (KPI 2)",
-            yaxis_title="Odchylenie (%)",
-            height=320,
+            title="Średnia powierzchnia mieszkania: rynek pierwotny vs wtórny (OLAP 9)",
+            xaxis_title="Kwartał",
+            yaxis_title="Średnia powierzchnia (m²)",
+            barmode="group",
+            height=380,
+            legend=dict(orientation="h", yanchor="bottom", y=-0.25),
         )
     )
     return fig
@@ -568,62 +639,6 @@ def salary_vs_price_scatter(df: pd.DataFrame) -> go.Figure:
     )
     return fig
 
-
-def area_price_chart(df: pd.DataFrame) -> go.Figure:
-    """Avg price/m² across area size bins."""
-    if df.empty or "area_m2" not in df.columns:
-        return _empty_figure("Cena/m² vs powierzchnia mieszkania")
-
-    valid = df.dropna(subset=["area_m2", "price_per_m2_pln"])
-    valid = valid[valid["area_m2"].between(15, 200)]
-    if valid.empty:
-        return _empty_figure("Cena/m² vs powierzchnia mieszkania")
-
-    bins = [15, 30, 40, 50, 60, 75, 90, 110, 140, 200]
-    labels = [
-        "15–30",
-        "30–40",
-        "40–50",
-        "50–60",
-        "60–75",
-        "75–90",
-        "90–110",
-        "110–140",
-        "140–200",
-    ]
-    valid = valid.copy()
-    valid["area_bin"] = pd.cut(valid["area_m2"], bins=bins, labels=labels)
-    agg = valid.groupby("area_bin", as_index=False, observed=True).agg(
-        avg_price=("price_per_m2_pln", "mean"), count=("price_per_m2_pln", "count")
-    )
-
-    fig = go.Figure()
-    fig.add_trace(
-        go.Scatter(
-            x=agg["area_bin"].astype(str),
-            y=agg["avg_price"],
-            mode="lines+markers",
-            line=dict(color=COLORS["price"], width=2.5),
-            marker=dict(size=agg["count"].apply(lambda x: min(6 + x / 200, 18))),
-            customdata=agg[["avg_price", "count"]].values,
-            hovertemplate=(
-                "Pow. <b>%{x} m²</b><br>"
-                "Śr. cena/m²: <b>%{customdata[0]:,.0f} PLN</b><br>"
-                "Oferty: %{customdata[1]:,d}"
-                "<extra></extra>"
-            ),
-            name="Śr. cena/m²",
-        )
-    )
-    fig.update_layout(
-        **_base_layout(
-            title="Cena/m² w zależności od powierzchni mieszkania",
-            xaxis_title="Przedział powierzchni (m²)",
-            yaxis_title="Śr. cena ofertowa / m² (PLN)",
-            height=380,
-        )
-    )
-    return fig
 
 
 def material_price_chart(df: pd.DataFrame) -> go.Figure:

@@ -246,7 +246,7 @@ class FactChangeRepository(BaseRepository[FactChange]):
                 change_amount_pln=record.change_amount_pln,
                 price_per_m2_pln=record.price_per_m2_pln,
             )
-            .on_conflict_do_nothing(index_elements=["download_url", "unit_id"])
+            .on_conflict_do_nothing(index_elements=["download_url", "unit_id", "fk_time"])
         )
 
     def insert_or_ignore_batch(self, records: list[FactChange]) -> int:
@@ -274,7 +274,7 @@ class FactChangeRepository(BaseRepository[FactChange]):
         self._session.execute(
             insert(FactChange)
             .values(rows)
-            .on_conflict_do_nothing(index_elements=["download_url", "unit_id"])
+            .on_conflict_do_nothing(index_elements=["download_url", "unit_id", "fk_time"])
         )
         return len(rows)
 
@@ -416,24 +416,28 @@ class DimFloodRiskRepository(BaseRepository[DimFloodRisk]):
             id=0,
             scenario="none",
             risk_class="none",
+            numeric_risk_class=0,
             description="Outside flood hazard zone",
         ),
         DimFloodRisk(
             id=1,
             scenario="Q10%",
             risk_class="high",
+            numeric_risk_class=1,
             description="Flood once per 10 years",
         ),
         DimFloodRisk(
             id=2,
             scenario="Q1%",
             risk_class="medium",
+            numeric_risk_class=2,
             description="Flood once per 100 years",
         ),
         DimFloodRisk(
             id=3,
             scenario="Q0.2%",
             risk_class="low",
+            numeric_risk_class=3,
             description="Flood once per 500 years",
         ),
     ]
@@ -445,6 +449,7 @@ class DimFloodRiskRepository(BaseRepository[DimFloodRisk]):
                 id=record.id,
                 scenario=record.scenario,
                 risk_class=record.risk_class,
+                numeric_risk_class=record.numeric_risk_class,
                 description=record.description,
             )
             .on_conflict_do_nothing(index_elements=["id"])

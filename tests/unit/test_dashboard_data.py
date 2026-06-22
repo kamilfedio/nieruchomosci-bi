@@ -1,7 +1,6 @@
 """Smoke tests for dashboard data layer."""
 
 import pandas as pd
-
 from src.dashboard.data import (
     DashboardFilters,
     _flood_listing_count,

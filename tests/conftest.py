@@ -4,7 +4,6 @@ import os
 
 import polars as pl
 import pytest
-
 from src.api.config import Config
 from src.api.db.connection import build_engine, get_session, init_db
 from src.api.db.models import Base, DimDemographics

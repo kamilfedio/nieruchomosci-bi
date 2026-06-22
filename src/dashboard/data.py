@@ -961,6 +961,47 @@ def build_city_kpi(
     return agg.dropna(subset=["lat", "lon"])
 
 
+@st.cache_data(ttl=300)
+def load_migration_growth_data(_db_url: str, city_filter: tuple[str, ...]) -> pd.DataFrame:
+    """Migration balance vs YoY price growth per city (OLAP 7)."""
+    ensure_database_schema(_db_url)
+    engine = build_engine(_db_url)
+    city_clause = "AND lower(g.city) = ANY(:cities)" if city_filter else ""
+    sql = text(f"""
+        WITH yoy AS (
+            SELECT g.city, t.year, AVG(fl.price_per_m2_pln) AS avg_price
+            FROM "Fact_Listing" fl
+            JOIN "Dim_Geo_Location" g ON fl.fk_geo_location = g.id
+            JOIN "Dim_Time" t ON fl.fk_time = t.id
+            WHERE fl.price_per_m2_pln IS NOT NULL
+              {city_clause}
+            GROUP BY g.city, t.year
+        ),
+        growth AS (
+            SELECT city, year,
+                   (avg_price - LAG(avg_price) OVER (PARTITION BY city ORDER BY year))
+                   / NULLIF(LAG(avg_price) OVER (PARTITION BY city ORDER BY year), 0) * 100
+                   AS yoy_pct
+            FROM yoy
+        )
+        SELECT
+            g.city,
+            AVG(d.migration_balance) AS avg_migration,
+            AVG(g.yoy_pct)           AS avg_yoy_pct,
+            MAX(d.population)        AS population
+        FROM growth g
+        JOIN "Dim_Demographics" d ON lower(g.city) = lower(d.city)
+        WHERE g.yoy_pct IS NOT NULL
+          AND d.migration_balance IS NOT NULL
+        GROUP BY g.city
+    """)
+    params: dict = {}
+    if city_filter:
+        params["cities"] = [_city_to_db(c) for c in city_filter]
+    with engine.connect() as conn:
+        return pd.read_sql(sql, conn, params=params)
+
+
 @st.cache_data(ttl=600)
 def load_dimension_stats(_db_url: str) -> dict[str, pd.DataFrame]:
     """Aggregated describe-style statistics for each dimension table."""

@@ -4,7 +4,6 @@ from pathlib import Path
 
 import httpx
 import pytest
-
 from src.api.scrapers.download import download_to_file
 
 
